@@ -5,7 +5,7 @@ services:
     plan: free
     envVars:
       - key: PORT
-        value: 3001
+        value: 10000
       - key: NODE_ENV
         value: production
     healthCheckPath: /

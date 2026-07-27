@@ -4,6 +4,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY src ./src
 COPY public ./public
-EXPOSE 3001
-ENV PORT=3001
+EXPOSE 10000
+# Render free web sets PORT=10000; our server.js falls back to 3001 if unset
+ENV PORT=10000
 CMD ["node", "src/server.js"]
