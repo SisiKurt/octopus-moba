@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: octopus-moba
+    runtime: docker
+    plan: free
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /
