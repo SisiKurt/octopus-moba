@@ -460,15 +460,15 @@ function draw(state) {
     ctx.restore();
   }
 
-  // осьминоги-крипы (tier 0/1/2)
+  // осьминоги-крипы (variant: tank=круг толстый, range=ромб)
   for (const m of state.mobs) {
-    const tierColor = m.tier === 0 ? null : (m.tier === 1 ? '#ffcc00' : '#ff4444');
-    const size = 8 + m.tier * 2;
-    drawOctopus(m.x, m.y, m.color, size, 8, 4, 0, m.tier, tierColor);
+    const variantColor = m.variant === 'range' ? '#ffdd44' : null;  // жёлтая обводка для range
+    const size = m.variant === 'range' ? 8 : 10;                     // tank чуть крупнее
+    drawOctopus(m.x, m.y, m.color, size, 8, 4, 0, 0, variantColor);
     // хп-бар
     ctx.fillStyle = '#000';
     ctx.fillRect(m.x-10, m.y-size-8, 20, 2);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = m.variant === 'range' ? '#ffdd44' : '#fff';
     ctx.fillRect(m.x-10, m.y-size-8, 20 * (m.hp/m.maxHp), 2);
   }
 

@@ -65,10 +65,21 @@ function createWorld() {
     // магазин — рядом с твоей базой (снизу по центру, чуть левее)
     shop: { x: MAP_W/2 - 120, y: MAP_H - 80 },
     lanes: {
-      // 3 вертикальных коридора (left / mid / right)
-      left:  { x: 160,           mobs: [] },
-      mid:   { x: MAP_W/2,       mobs: [] },
-      right: { x: MAP_W - 160,   mobs: [] },
+      // 2 вертикальных коридора (left / right) — mid удалён для производительности
+      left:  { x: MAP_W * 0.33, mobs: [] },
+      right: { x: MAP_W * 0.67, mobs: [] },
+    },
+    // волновое расписание: крип рождается только когда предыдущий того же типа в том же коридоре умер
+    // waveCounter[laneName][team][variant] = сколько живых сейчас
+    waveCounter: {
+      left:  { blue: { tank: 0, range: 0 }, red: { tank: 0, range: 0 } },
+      right: { blue: { tank: 0, range: 0 }, red: { tank: 0, range: 0 } },
+    },
+    // вариант следующего крипа (чередование tank/range после каждой смерти)
+    // 0 = tank, 1 = range
+    nextVariant: {
+      left:  { blue: 0, red: 0 },
+      right: { blue: 0, red: 0 },
     },
     players: new Map(), // socket.id -> player
     bots: [],           // боты-осьминоги: [{id, ...player-like, state, ...}]
@@ -174,36 +185,49 @@ function recomputeStats(p) {
 }
 
 // ---------- Мобы ----------
-function spawnMob(laneName, team) {
-  // blue (союзные игроку) спавнятся у синей базы (внизу) и идут ВВЕРХ к красной
-  // red (вражеские) спавнятся у красной базы (вверху) и идут ВНИЗ к синей
+// variant: 'tank' (ближний бой, много HP) или 'range' (дальняя атака, меньше HP)
+function spawnMob(laneName, team, variant) {
+  // blue (союзные) спавнятся у синей базы (внизу), идут вверх к красной
+  // red (вражеские) спавнятся у красной базы (вверху), идут вниз к синей
   const lane = world.lanes[laneName];
-  const fromOurBase = team === 'blue';  // синие — наши, спавним у нашей базы
+  const fromOurBase = team === 'blue';
   const spawnY = fromOurBase ? MAP_H - 80 : 80;
-  const tier = Math.floor(Math.random() * 3);  // 0=слабый, 1=средний, 2=сильный
-  const tierMult = [1, 1.8, 3.2][tier];
+  const isRange = variant === 'range';
+  // tank: HP много, броня есть, dmg большой, range 18 (ближний)
+  // range: HP средне, броня 0, dmg средний, range 80 (дальний)
+  const stats = isRange
+    ? { hp: 24, armor: 0, dmg: 4, range: 80,  speed: 0.9, color: team === 'blue' ? '#66bbff' : '#ff8866', shape: 'diamond' }
+    : { hp: 60, armor: 2, dmg: 6, range: 18,  speed: 0.7, color: team === 'blue' ? '#2266cc' : '#cc3322', shape: 'circle' };
   return {
     id: world.nextId++,
     team,
-    shape: 'circle',
-    color: team === 'blue' ? '#3399ff' : '#ff5544',
-    tier,
-    x: lane.x + (Math.random()-0.5)*40,
+    variant,
+    shape: stats.shape,
+    color: stats.color,
+    x: lane.x + (Math.random()-0.5)*30,
     y: spawnY,
-    hp: 30 * tierMult,
-    maxHp: 30 * tierMult,
-    speed: 1.0 + tier * 0.18,
-    dmg: 3 + tier * 2,
-    range: 18,
-    armor: tier,                          // 0..2
+    hp: stats.hp,
+    maxHp: stats.hp,
+    speed: stats.speed,
+    dmg: stats.dmg,
+    range: stats.range,
+    armor: stats.armor,
     cooldown: 0,
     lane: laneName,
     target: null,
   };
 }
 
-// Лимит крипов на команду в линии (Dota-стайл: 3 melee + 3 ranged, упрощённо)
-const MAX_MOBS_PER_LANE_PER_TEAM = 3;
+// Одна волна в начале матча — без неё нечего чередовать
+function seedInitialWave() {
+  for (const laneName of Object.keys(world.lanes)) {
+    // синий танк → красный танк (зеркально)
+    world.lanes[laneName].mobs.push(spawnMob(laneName, 'blue', 'tank'));
+    world.lanes[laneName].mobs.push(spawnMob(laneName, 'red',  'tank'));
+    world.waveCounter[laneName].blue.tank = 1;
+    world.waveCounter[laneName].red.tank = 1;
+  }
+}
 
 // ---------- Снаряды ----------
 function spawnProjectile(owner, target, weapon) {
@@ -230,16 +254,8 @@ const allMobs = () => Object.values(world.lanes).flatMap(l => l.mobs);
 function tick() {
   world.tick++;
 
-  // спавн мобов: раз в ~80 тиков в каждую линию, но КАЖДАЯ команда отдельно
-  if (world.tick % 80 === 0) {
-    for (const laneName of Object.keys(world.lanes)) {
-      const mobs = world.lanes[laneName].mobs;
-      const blueCount = mobs.filter(m => m.team === 'blue').length;
-      const redCount  = mobs.filter(m => m.team === 'red').length;
-      if (blueCount < MAX_MOBS_PER_LANE_PER_TEAM) mobs.push(spawnMob(laneName, 'blue'));
-      if (redCount  < MAX_MOBS_PER_LANE_PER_TEAM) mobs.push(spawnMob(laneName, 'red'));
-    }
-  }
+  // мобы: спавнятся ТОЛЬКО на смерть предыдущего (см. секцию ниже)
+  // (раньше был spawn по таймеру — убран, чтобы карта была стабильной: 2 lane × 2 team = 4 живых)
 
   // игроки: тикаем кулдауны каждого ствола в инвентаре
   for (const p of world.players.values()) {
@@ -324,6 +340,21 @@ function tick() {
             }
           }
         }
+        // ---- волновая логика: после смерти крипа → следующий вариант на его место ----
+        // счётчик живых этого варианта -- (что и так верно после splice)
+        const variant = m.variant || 'tank';
+        const cur = world.waveCounter[laneName][m.team][variant] || 0;
+        world.waveCounter[laneName][m.team][variant] = Math.max(0, cur - 1);
+        // следующий вариант: чередуем tank/range (0=tank, 1=range)
+        const v = world.nextVariant[laneName][m.team];
+        const nextVariantName = v === 0 ? 'tank' : 'range';
+        world.nextVariant[laneName][m.team] = 1 - v;
+        // спавним следующего крипа того же team, в том же lane
+        const newMob = spawnMob(laneName, m.team, nextVariantName);
+        mobs.push(newMob);
+        world.waveCounter[laneName][m.team][nextVariantName] =
+          (world.waveCounter[laneName][m.team][nextVariantName] || 0) + 1;
+        // удалить мёртвого
         mobs.splice(i, 1);
       }
     }
@@ -724,8 +755,12 @@ setInterval(() => {
 }, TICK_MS);
 
 spawnInitialBots();
+seedInitialWave();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`MOBA proto on http://0.0.0.0:${PORT}`);
   console.log(`Spawned ${world.bots.length} bots`);
+  let totalMobs = 0;
+  for (const k of Object.keys(world.lanes)) totalMobs += world.lanes[k].mobs.length;
+  console.log(`Initial wave: ${totalMobs} mobs in 2 lanes (tank x${totalMobs}, range after first kill)`);
 });
