@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>MOBA proto</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; background:#0a0a14; color:#eee; font-family:system-ui,sans-serif; overflow:hidden; }
+  #screen { position:relative; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; background:#0a0a14; }
+  canvas { background:#1a1a2a; image-rendering:pixelated; touch-action:none; max-width:100vw; max-height:100vh; }
+
+  #hud { position:absolute; top:0; left:0; right:0; padding:8px 10px; display:none;
+    background:linear-gradient(180deg, rgba(0,0,0,.6), transparent); pointer-events:none; z-index:5; }
+  #hud .row { display:flex; gap:10px; align-items:center; font-size:14px; }
+  #hud .bar { flex:1; height:10px; background:#333; border-radius:5px; overflow:hidden; }
+  #hud .bar > div { height:100%; background:#dd3344; transition:width .1s; }
+  #hud .gold { color:#ffd54a; }
+  #hud .lvl { color:#7ad7ff; }
+
+  /* выбор героя */
+  #hero-pick { position:absolute; inset:0; background:rgba(0,0,0,.85);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; z-index:20; }
+  #hero-pick h2 { font-size:18px; }
+  #hero-pick h3 { font-size:11px; color:#888; }
+  #hero-pick .list { display:flex; gap:10px; }
+  #hero-pick button { padding:12px 16px; background:#222a44; color:#eee;
+    border:2px solid #334; border-radius:8px; font-size:13px; }
+  #hero-pick button.green { border-color:#22dd66; }
+  #hero-pick button.blue  { border-color:#4488ff; }
+  #hero-pick button.purple{ border-color:#cc44ff; }
+
+  /* джойстик слева внизу */
+  #joystick { position:absolute; bottom:30px; left:30px; width:120px; height:120px;
+    background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.2);
+    border-radius:50%; z-index:10; touch-action:none; display:none; }
+  #joystick .knob { position:absolute; left:50%; top:50%; width:50px; height:50px;
+    background:rgba(255,255,255,.4); border-radius:50%; transform:translate(-50%,-50%); }
+
+  /* скиллы — слева по центру (вертикально) */
+  #skills { position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; gap:8px; z-index:10; display:none; }
+  #skills button { width:54px; height:54px; background:#1d2742; color:#eee; border:1px solid #334; border-radius:6px; font-size:11px; position:relative; }
+  #skills button .lvl { position:absolute; bottom:2px; right:4px; color:#ffd54a; }
+
+  /* инвентарь — справа по центру (вертикально) */
+  #inventory { position:absolute; right:10px; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; gap:6px; z-index:10; display:none; }
+  #inventory .slot { width:54px; height:44px; background:#0e1424; color:#556;
+    border:1px dashed #334; border-radius:6px; font-size:11px;
+    display:flex; align-items:center; justify-content:center; }
+  #inventory .slot.filled { background:#1d2742; color:#eee; border-style:solid; border-color:#7ad7ff; }
+
+  /* магазин — у базы снизу, появляется когда близко */
+  #shop { position:absolute; bottom:30px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; gap:6px; align-items:center; z-index:10; display:none; }
+  #shop button { padding:8px 10px; background:#1d2742; color:#eee; border:1px solid #334; border-radius:6px; font-size:12px; min-width:120px; text-align:center; }
+  #shop button.owned { opacity:.5; background:#103a1f; border-color:#22dd66; }
+  #shop button:disabled { opacity:.4; }
+  #shop .merge-hint { font-size:10px; color:#888; margin-top:4px; text-align:center; }
+
+  /* индикатор "магазин доступен" */
+  #shop-indicator { position:absolute; bottom:110px; left:50%; transform:translateX(-50%);
+    background:#22dd66; color:#000; padding:4px 10px; border-radius:12px; font-size:11px; display:none; z-index:10; }
+
+  /* мерж-подсказка в инвентаре */
+  #merge-hint { position:absolute; right:70px; top:50%; transform:translateY(-50%);
+    background:#ffaa00; color:#000; padding:4px 8px; border-radius:6px; font-size:10px; display:none; z-index:10; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div id="screen">
+  <canvas id="cv" width="500" height="800"></canvas>
+
+  <div id="hud">
+    <div class="row">
+      <span class="lvl" id="lvl">Lv 1</span>
+      <div class="bar"><div id="hp" style="width:100%"></div></div>
+      <span class="gold" id="gold">0$</span>
+    </div>
+  </div>
+
+  <div id="hero-pick">
+    <h2>🐙 Octopus MOBA</h2>
+    <h3>Выбери своего осьминога</h3>
+    <div class="list">
+      <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
+      <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>
+      <button class="purple" data-h="miner">Минёр<br><small>с взрывчаткой</small></button>
+    </div>
+  </div>
+
+  <div id="joystick"><div class="knob"></div></div>
+  <div id="skills"></div>
+  <div id="inventory"></div>
+  <div id="shop"></div>
+  <div id="shop-indicator">Магазин рядом ⬇</div>
+  <div id="merge-hint">Одно оружие ×2 = мерж</div>
+  <div id="conn-status" style="position:absolute;bottom:6px;right:6px;font-size:10px;padding:3px 6px;background:rgba(0,0,0,.7);border-radius:6px;color:#888;z-index:30;font-family:monospace;">⏳ …</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const socket = io();
+let me = null;
+let heroes = {};
+let weapons = {};
+let lastState = null;
+
+const hud = document.getElementById('hud');
+const hpEl = document.getElementById('hp');
+const goldEl = document.getElementById('gold');
+const lvlEl = document.getElementById('lvl');
+const heroPick = document.getElementById('hero-pick');
+const joystick = document.getElementById('joystick');
+const skillsDiv = document.getElementById('skills');
+const inventoryDiv = document.getElementById('inventory');
+const shop = document.getElementById('shop');
+const shopIndicator = document.getElementById('shop-indicator');
+const mergeHint = document.getElementById('merge-hint');
+
+let inputKeys = { up:false, down:false, left:false, right:false };
+let aimX = 0, aimY = 0;
+let joyActive = null, joyCenter = null;
+let shopOpen = false;
+
+// ---------- resize canvas под экран ----------
+const LOGICAL_W = 800;
+const LOGICAL_H = 500;
+function resize() {
+  // при первом запуске canvas должен иметь фиксированные размеры
+  if (!cv.width) { cv.width = LOGICAL_W; cv.height = LOGICAL_H; }
+}
+window.addEventListener('resize', resize);
+
+// ---------- выбор героя ----------
+document.querySelectorAll('#hero-pick button').forEach(btn => {
+  btn.onclick = () => {
+    socket.emit('join', { hero: btn.dataset.h });
+    heroPick.style.display = 'none';
+    hud.style.display = 'block';
+    joystick.style.display = 'block';
+    skillsDiv.style.display = 'flex';
+    inventoryDiv.style.display = 'flex';
+  };
+});
+
+// ---------- джойстик ----------
+const knob = joystick.querySelector('.knob');
+function joyStart(e) {
+  e.preventDefault();
+  const t = e.touches ? e.touches[0] : e;
+  joyActive = t.identifier ?? 'mouse';
+  joyCenter = { x: joystick.offsetLeft + joystick.offsetWidth/2, y: joystick.offsetTop + joystick.offsetHeight/2 };
+}
+function joyMove(e) {
+  if (joyActive === null) return;
+  e.preventDefault();
+  const t = [...(e.touches||[])].find(x => (x.identifier ?? 'mouse') === joyActive) || e;
+  const dx = t.clientX - joyCenter.x;
+  const dy = t.clientY - joyCenter.y;
+  const max = 40;
+  const len = Math.hypot(dx, dy);
+  const cx = len > max ? (dx/len)*max : dx;
+  const cy = len > max ? (dy/len)*max : dy;
+  knob.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
+  inputKeys.up    = cy < -10;
+  inputKeys.down  = cy >  10;
+  inputKeys.left  = cx < -10;
+  inputKeys.right = cx >  10;
+}
+function joyEnd(e) {
+  joyActive = null;
+  knob.style.transform = 'translate(-50%, -50%)';
+  inputKeys.up = inputKeys.down = inputKeys.left = inputKeys.right = false;
+}
+joystick.addEventListener('touchstart', joyStart);
+joystick.addEventListener('touchmove',  joyMove);
+joystick.addEventListener('touchend',   joyEnd);
+joystick.addEventListener('mousedown',  joyStart);
+window.addEventListener('mousemove', e => { if (joyActive !== null) joyMove(e); });
+window.addEventListener('mouseup',   joyEnd);
+
+// ---------- aim: тап по карте ----------
+cv.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; aimFromClient(t.clientX, t.clientY); });
+cv.addEventListener('mousedown',  e => aimFromClient(e.clientX, e.clientY));
+function aimFromClient(cx, cy) {
+  const r = cv.getBoundingClientRect();
+  const scaleX = cv.width / r.width;
+  const scaleY = cv.height / r.height;
+  aimX = (cx - r.left) * scaleX;
+  aimY = (cy - r.top)  * scaleY;
+}
+
+// ---------- отправка инпута ----------
+setInterval(() => {
+  socket.emit('input', { keys: inputKeys, aim: { x: aimX, y: aimY } });
+}, 50);
+
+// ---------- сеть ----------
+const connStatus = document.getElementById('conn-status');
+const setStatus = (msg, ok) => {
+  if (!connStatus) return;
+  connStatus.textContent = msg;
+  connStatus.style.color = ok ? '#22dd66' : '#ff6644';
+};
+socket.on('connect', () => setStatus('✅ connected: ' + socket.id.slice(0,6), true));
+socket.on('connect_error', e => setStatus('❌ ' + (e.message||e), false));
+socket.on('disconnect', r => setStatus('⚠️ disconnected: ' + r, false));
+socket.on('init', data => {
+  me = { id: data.id };
+  heroes = data.heroes;
+  weapons = data.weapons;
+  renderShop();
+  renderSkills();
+  renderInventory();
+});
+
+socket.on('state', state => {
+  lastState = state;
+  draw(state);
+  if (me) updateHud(state);
+});
+
+// ---------- UI ----------
+function renderShop() {
+  shop.innerHTML = '';
+  for (const [k, w] of Object.entries(weapons)) {
+    const b = document.createElement('button');
+    b.textContent = `${w.name} (${w.price}$)`;
+    b.onclick = () => socket.emit('buyWeapon', { weapon: k });
+    b.dataset.weapon = k;
+    shop.appendChild(b);
+  }
+  const hint = document.createElement('div');
+  hint.className = 'merge-hint';
+  hint.textContent = 'Купи 2 одинаковых = мерж (2 цели, 75% урона)';
+  shop.appendChild(hint);
+}
+function renderSkills() {
+  skillsDiv.innerHTML = '';
+  for (let i = 0; i < 6; i++) {
+    const b = document.createElement('button');
+    b.innerHTML = `S${i+1}<span class="lvl">0</span>`;
+    b.onclick = () => socket.emit('levelSkill', { slot: i });
+    b.dataset.slot = i;
+    skillsDiv.appendChild(b);
+  }
+}
+function renderInventory() {
+  inventoryDiv.innerHTML = '';
+  for (let i = 0; i < 6; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'slot empty';
+    slot.dataset.slot = i;
+    slot.textContent = '+';
+    inventoryDiv.appendChild(slot);
+  }
+}
+function updateHud(state) {
+  const p = state.players.find(x => x.id === me.id);
+  if (!p) return;
+  hpEl.style.width = (100 * p.hp / p.maxHp) + '%';
+  goldEl.textContent = p.gold + '$';
+  lvlEl.textContent = 'Lv ' + p.level;
+  const inv = p.inventory || [];
+
+  // магазин: купленные — .owned
+  [...shop.querySelectorAll('button[data-weapon]')].forEach(b => {
+    b.classList.toggle('owned', inv.includes(b.dataset.weapon));
+  });
+
+  // инвентарь: 6 слотов
+  const slots = [...inventoryDiv.querySelectorAll('.slot')];
+  // подсчёт дублей для мерж-хинта
+  const counts = {};
+  for (const w of inv) counts[w] = (counts[w] || 0) + 1;
+  const hasMerge = Object.values(counts).some(c => c >= 2);
+  mergeHint.style.display = hasMerge ? 'block' : 'none';
+
+  slots.forEach((s, i) => {
+    if (i < inv.length) {
+      s.classList.add('filled');
+      const w = weapons[inv[i]];
+      const cnt = counts[inv[i]] || 1;
+      s.textContent = w ? (cnt > 1 ? `${w.name}×${cnt}` : w.name) : inv[i];
+    } else {
+      s.classList.remove('filled');
+      s.textContent = '+';
+    }
+  });
+
+  // скиллы
+  [...skillsDiv.children].forEach(b => {
+    b.querySelector('.lvl').textContent = p.skillLevels[+b.dataset.slot];
+  });
+
+  // магазин: показываем индикатор если близко к своей базе (не к координатам мирового shop)
+  let myBase = null;
+  if (state.bases && p) {
+    myBase = state.bases.find(b => b.owner === (p.team || 'blue'));
+  }
+  if (myBase && p) {
+    const dist = Math.hypot(p.x - myBase.x, p.y - myBase.y);
+    const near = dist < 150;
+    shopIndicator.style.display = near ? 'block' : 'none';
+    if (near && !shopOpen) {
+      shop.style.display = 'flex';
+      shopOpen = true;
+    } else if (!near && shopOpen) {
+      shop.style.display = 'none';
+      shopOpen = false;
+    }
+  }
+}
+
+// ---------- отрисовка ----------
+function draw(state) {
+  try {
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0,0,W,H);
+
+  // коридоры (3 вертикальные полосы)
+  ctx.strokeStyle = '#2a3450';
+  ctx.lineWidth = 1;
+  for (const x of [160, W/2, W-160]) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+
+  // базы
+  for (const b of state.bases) {
+    ctx.fillStyle = b.owner === 'blue' ? '#224488' : '#882222';
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 30, 0, Math.PI*2);
+    ctx.fill();
+    // хп базы
+    ctx.fillStyle = '#400';
+    ctx.fillRect(b.x-25, b.y-40, 50, 6);
+    ctx.fillStyle = '#0d4';
+    ctx.fillRect(b.x-25, b.y-40, 50 * (b.hp/b.maxHp), 6);
+    ctx.fillStyle = '#fff'; ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('BASE', b.x, b.y+4);
+  }
+
+  // магазин (маркер у синей базы)
+  if (state.shop) {
+    ctx.fillStyle = '#ffaa00';
+    ctx.beginPath();
+    ctx.arc(state.shop.x, state.shop.y, 18, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#000'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('SHOP', state.shop.x, state.shop.y+3);
+  }
+
+  // осьминог (герой или крип)
+  function drawOctopus(x, y, color, size, legsCount, legsLen, angleOffset = 0, tier = 0, mobColor2 = null) {
+    ctx.save();
+    ctx.translate(x, y);
+    // 8 щупалец (анимация — качаются)
+    const t = Date.now() / 200;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < legsCount; i++) {
+      const a = (i / legsCount) * Math.PI * 2 + angleOffset + Math.sin(t + i) * 0.15;
+      const lx = Math.cos(a) * (size + legsLen);
+      const ly = Math.sin(a) * (size + legsLen);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * size, Math.sin(a) * size);
+      ctx.quadraticCurveTo(
+        Math.cos(a + Math.PI/4) * (size + legsLen * 0.7),
+        Math.sin(a + Math.PI/4) * (size + legsLen * 0.7),
+        lx, ly
+      );
+      ctx.stroke();
+    }
+    // тело (голова)
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, 0, size, 0, Math.PI*2);
+    ctx.fill();
+    // глаза
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-size*0.3, -size*0.2, size*0.25, 0, Math.PI*2);
+    ctx.arc(size*0.3, -size*0.2, size*0.25, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-size*0.3, -size*0.2, size*0.12, 0, Math.PI*2);
+    ctx.arc(size*0.3, -size*0.2, size*0.12, 0, Math.PI*2);
+    ctx.fill();
+    // tier-индикатор (для мобов)
+    if (tier > 0 && mobColor2) {
+      ctx.strokeStyle = mobColor2;
+      ctx.lineWidth = 2 + tier;
+      ctx.beginPath();
+      ctx.arc(0, 0, size + 3, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // осьминоги-крипы (tier 0/1/2)
+  for (const m of state.mobs) {
+    const tierColor = m.tier === 0 ? null : (m.tier === 1 ? '#ffcc00' : '#ff4444');
+    const size = 8 + m.tier * 2;
+    drawOctopus(m.x, m.y, m.color, size, 8, 4, 0, m.tier, tierColor);
+    // хп-бар
+    ctx.fillStyle = '#000';
+    ctx.fillRect(m.x-10, m.y-size-8, 20, 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(m.x-10, m.y-size-8, 20 * (m.hp/m.maxHp), 2);
+  }
+
+  // снаряды
+  for (const p of state.projectiles) {
+    ctx.fillStyle = p.isCannon ? '#ff8800' : '#ffff66';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.isCannon ? 5 : 3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // осьминоги-игроки
+  for (const p of state.players) {
+    // drawOctopus неповорачивается вместе с targetAngle, поэтому дуло рисуем отдельно
+    drawOctopus(p.x, p.y, p.color, 12, 8, 4, Math.random() * 0.3, 0);
+    // "дуло" — идёт в направлении targetAngle
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.targetAngle || 0);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(10, -3, 10, 6);
+    ctx.restore();
+    // хп
+    ctx.fillStyle = '#000';
+    ctx.fillRect(p.x-18, p.y-26, 36, 4);
+    ctx.fillStyle = '#dd3344';
+    ctx.fillRect(p.x-18, p.y-26, 36 * (p.hp/p.maxHp), 4);
+    ctx.fillStyle = '#fff'; ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.name + ' Lv' + p.level, p.x, p.y-30);
+  }
+
+  // осьминоги-боты (рисуем поверху игроков чтобы было видно)
+  if (state.bots) {
+    for (const b of state.bots) {
+      // bot color чуть тусклее обычного (alpha)
+      ctx.globalAlpha = 0.85;
+      drawOctopus(b.x, b.y, b.color, 11, 8, 4, Math.random() * 0.4, 0);
+      ctx.globalAlpha = 1;
+      // дуло
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.targetAngle || 0);
+      ctx.fillStyle = '#ddd';
+      ctx.fillRect(9, -2, 8, 4);
+      ctx.restore();
+      // хп
+      ctx.fillStyle = '#000';
+      ctx.fillRect(b.x-16, b.y-24, 32, 3);
+      ctx.fillStyle = '#dd3344';
+      ctx.fillRect(b.x-16, b.y-24, 32 * (b.hp/b.maxHp), 3);
+      // имя с иконкой команды
+      ctx.fillStyle = '#ccc'; ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      const teamIcon = b.team === 'red' ? '🔴' : '🔵';
+      const stateIcon = b.state === 'FIGHT' ? '⚔️' : b.state === 'RETREAT' ? '🏃' : b.state === 'SHOP' ? '💰' : '🧑‍🌾';
+      ctx.fillText(`${teamIcon} ${b.name} ${stateIcon}`, b.x, b.y-28);
+    }
+  }
+
+  } catch (e) {
+    setStatus('💥 draw err: ' + (e.message||e), false);
+    return;
+  }
+  // следующий кадр — чтобы мир не зависал между state-ами
+  requestAnimationFrame(() => draw(lastState));
+}
+
+// первый ресайз
+resize();
+</script>
+</div>
+</body>
+</html>
