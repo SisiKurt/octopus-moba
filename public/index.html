@@ -96,13 +96,45 @@
   <div id="shop"></div>
   <div id="shop-indicator">Магазин рядом ⬇</div>
   <div id="merge-hint">Одно оружие ×2 = мерж</div>
+  <div id="waking" style="display:none;position:absolute;inset:0;background:rgba(10,10,20,.95);z-index:50;align-items:center;justify-content:center;flex-direction:column;color:#eee;font-family:system-ui;text-align:center;padding:20px;">
+    <div style="font-size:48px;">🐙💤</div>
+    <h2 style="margin:14px 0;">Render просыпается…</h2>
+    <p style="opacity:.7;font-size:14px;max-width:280px;">Free инстанс засыпает через 15 мин простоя.<br>Первый запуск после сна ≈ 30-90 сек.<br>Подожди и НЕ перезагружай страницу.</p>
+    <div id="waking-spinner" style="margin-top:20px;width:36px;height:36px;border:3px solid #333;border-top-color:#7ad7ff;border-radius:50%;animation:spin 1s linear infinite;"></div>
+    <p id="waking-retry" style="margin-top:18px;font-size:12px;opacity:.5;font-family:monospace;"></p>
+  </div>
   <div id="conn-status" style="position:absolute;bottom:6px;right:6px;font-size:10px;padding:3px 6px;background:rgba(0,0,0,.7);border-radius:6px;color:#888;z-index:30;font-family:monospace;">⏳ …</div>
+  <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 
+<script>
+const waking = document.getElementById('waking');
+const wakingRetry = document.getElementById('waking-retry');
+
+// Показать waking сразу, спрятать после полного цикла init
+waking.style.display = 'flex';
+let appReady = false;
+window.addEventListener('appready', () => {
+  waking.style.display = 'none';
+  appReady = true;
+});
+
+</script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
-const socket = io();
+// socket.io с длинными таймаутами — Render cold start 30-90сек
+const socket = io({
+  transports: ['polling', 'websocket'],
+  upgrade: true,
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 8000,
+  timeout: 120000,           // 2 мин на connect
+  pingInterval: 25000,
+  pingTimeout: 60000
+});
 let me = null;
 let heroes = {};
 let weapons = {};
@@ -205,9 +237,31 @@ const setStatus = (msg, ok) => {
   connStatus.textContent = msg;
   connStatus.style.color = ok ? '#22dd66' : '#ff6644';
 };
-socket.on('connect', () => setStatus('✅ connected: ' + socket.id.slice(0,6), true));
 socket.on('connect_error', e => setStatus('❌ ' + (e.message||e), false));
 socket.on('disconnect', r => setStatus('⚠️ disconnected: ' + r, false));
+
+// Если Render Free cold start > 8 сек — показать что ждём
+let wakeTimer = setTimeout(() => { if (!appReady) wakingRetry.textContent = 'Render cold start... ждём socket'; }, 8000);
+
+// polling fallback: каждые 3 сек пробуем fetch вручную — разбудить Render
+async function pokeServer() {
+  try {
+    const r = await fetch('/?poke=' + Date.now(), { cache: 'no-store' });
+    if (r.ok && !appReady) {
+      wakingRetry.textContent = 'Сервер ответил — подключаем socket…';
+    }
+  } catch (e) {}
+}
+let pokeInterval = setInterval(pokeServer, 3000);
+
+// override first connect handler: добавить cleanup wake stuff
+const _origConnect = socket.listeners('connect');
+socket.removeAllListeners('connect');
+socket.on('connect', () => {
+  setStatus('✅ connected: ' + socket.id.slice(0,6), true);
+  clearInterval(pokeInterval);
+  clearTimeout(wakeTimer);
+});
 socket.on('init', data => {
   me = { id: data.id };
   heroes = data.heroes;
@@ -221,6 +275,8 @@ socket.on('state', state => {
   lastState = state;
   draw(state);
   if (me) updateHud(state);
+  // первый state = точно всё работает. Спрятать waking
+  if (!appReady) window.dispatchEvent(new Event('appready'));
 });
 
 // ---------- UI ----------
