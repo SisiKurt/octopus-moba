@@ -175,11 +175,11 @@ function recomputeStats(p) {
 
 // ---------- Мобы ----------
 function spawnMob(laneName, team) {
-  // blue спавнятся у красной базы (сверху) и идут вниз к blue-базе
-  // red спавнятся у синей базы (снизу) и идут вверх к red-базе
+  // blue (союзные игроку) спавнятся у синей базы (внизу) и идут ВВЕРХ к красной
+  // red (вражеские) спавнятся у красной базы (вверху) и идут ВНИЗ к синей
   const lane = world.lanes[laneName];
-  const spawnY = team === 'blue' ? 80 : MAP_H - 80;
-  // разброс силы: 0..2 (tier), влияет на hp/armor/dmg/speed
+  const fromOurBase = team === 'blue';  // синие — наши, спавним у нашей базы
+  const spawnY = fromOurBase ? MAP_H - 80 : 80;
   const tier = Math.floor(Math.random() * 3);  // 0=слабый, 1=средний, 2=сильный
   const tierMult = [1, 1.8, 3.2][tier];
   return {
@@ -189,10 +189,10 @@ function spawnMob(laneName, team) {
     color: team === 'blue' ? '#3399ff' : '#ff5544',
     tier,
     x: lane.x + (Math.random()-0.5)*40,
-    y: spawnY + (team === 'blue' ? 30 : -30),
+    y: spawnY,
     hp: 30 * tierMult,
     maxHp: 30 * tierMult,
-    speed: 0.9 + tier * 0.15,
+    speed: 1.0 + tier * 0.18,
     dmg: 3 + tier * 2,
     range: 18,
     armor: tier,                          // 0..2
@@ -201,6 +201,9 @@ function spawnMob(laneName, team) {
     target: null,
   };
 }
+
+// Лимит крипов на команду в линии (Dota-стайл: 3 melee + 3 ranged, упрощённо)
+const MAX_MOBS_PER_LANE_PER_TEAM = 3;
 
 // ---------- Снаряды ----------
 function spawnProjectile(owner, target, weapon) {
@@ -227,11 +230,14 @@ const allMobs = () => Object.values(world.lanes).flatMap(l => l.mobs);
 function tick() {
   world.tick++;
 
-  // спавн мобов: раз в ~80 тиков в каждую линию
+  // спавн мобов: раз в ~80 тиков в каждую линию, но КАЖДАЯ команда отдельно
   if (world.tick % 80 === 0) {
     for (const laneName of Object.keys(world.lanes)) {
-      world.lanes[laneName].mobs.push(spawnMob(laneName, 'blue'));
-      world.lanes[laneName].mobs.push(spawnMob(laneName, 'red'));
+      const mobs = world.lanes[laneName].mobs;
+      const blueCount = mobs.filter(m => m.team === 'blue').length;
+      const redCount  = mobs.filter(m => m.team === 'red').length;
+      if (blueCount < MAX_MOBS_PER_LANE_PER_TEAM) mobs.push(spawnMob(laneName, 'blue'));
+      if (redCount  < MAX_MOBS_PER_LANE_PER_TEAM) mobs.push(spawnMob(laneName, 'red'));
     }
   }
 
@@ -243,39 +249,53 @@ function tick() {
     if (p.hp <= 0) continue;     // респаун через 100 тиков
   }
 
-  // мобы: идут к вражеской базе или к ближайшему врагу
+  // мобы: идут к вражеской базе, атакуют врагов в радиусе по дороге
   for (const laneName of Object.keys(world.lanes)) {
     const mobs = world.lanes[laneName].mobs;
     for (let i = mobs.length - 1; i >= 0; i--) {
       const m = mobs[i];
-      // найти врага в радиусе
-      let nearest = null, nearestDist = 200;
+      // Найти врага в радиусе 220 (крипы реагируют на героев подальше)
+      let nearest = null, nearestDist = 220;
       for (const enemy of [...world.players.values(), ...mobs]) {
         if (enemy.team === m.team || enemy === m) continue;
         const d = Math.hypot(enemy.x - m.x, enemy.y - m.y);
         if (d < nearestDist) { nearest = enemy; nearestDist = d; }
       }
-      // цель
-      const goal = nearest || world.bases.find(b => b.owner !== m.team);
-      const dx = goal.x - m.x;
-      const dy = goal.y - m.y;
+      // выбрать цель: ближайший враг ИЛИ вражеская база
+      let goalX, goalY;
+      if (nearest) {
+        goalX = nearest.x; goalY = nearest.y;
+      } else {
+        // синие идут к красной базе (вверху), красные — к синей (внизу)
+        const enemyBase = world.bases.find(b => b.owner !== m.team);
+        goalX = enemyBase.x; goalY = enemyBase.y;
+      }
+      const dx = goalX - m.x;
+      const dy = goalY - m.y;
       const d = Math.hypot(dx, dy);
+      // идём только если не в радиусе атаки
       if (d > m.range) {
-        m.x += (dx/d) * m.speed;
-        m.y += (dy/d) * m.speed;
+        const stepX = (dx / d) * m.speed;
+        const stepY = (dy / d) * m.speed;
+        m.x += stepX;
+        m.y += stepY;
+      } else if (nearest) {
+        // в радиусе атаки — мелкий jitter чтобы не стоять колом
+        const jitter = (m.id % 7 - 3) * 0.05;
+        m.x += jitter;
       }
       // атака
-      if (d <= m.range && m.cooldown <= 0) {
+      if (d <= m.range && m.cooldown <= 0 && nearest) {
         m.cooldown = 30;
-        const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
-        goal.hp -= dmgDealt;
+        const dmgDealt = Math.max(1, m.dmg - (nearest.armor || 0));
+        nearest.hp -= dmgDealt;
         // респаун только для героев (у базы нет .hero)
-        if (goal.hero && goal.hp <= 0) {
-          const def = HERO_DEFS[goal.hero];
-          goal.hp = def.baseStats.hp;
+        if (nearest.hero && nearest.hp <= 0) {
+          const def = HERO_DEFS[nearest.hero];
+          nearest.hp = def.baseStats.hp;
           // респаун у синей базы (снизу)
-          goal.x = MAP_W/2 + (Math.random()-0.5)*60;
-          goal.y = MAP_H - 130;
+          nearest.x = MAP_W/2 + (Math.random()-0.5)*60;
+          nearest.y = MAP_H - 130;
         }
       }
       if (m.cooldown > 0) m.cooldown--;
