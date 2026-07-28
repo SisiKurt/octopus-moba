@@ -59,10 +59,16 @@
   /* инвентарь — позиционируется из JS относительно канваса */
   #inventory { position:absolute;
     display:flex; flex-direction:column; gap:6px; z-index:10; display:none; }
-  #inventory .slot { width:44px; height:36px; background:#0e1424; color:#556;
+  #inventory .slot { width:44px; height:52px; background:#0e1424; color:#556;
     border:1px dashed #334; border-radius:6px; font-size:10px;
-    display:flex; align-items:center; justify-content:center; }
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; overflow:hidden; padding:2px; }
   #inventory .slot.filled { background:#1d2742; color:#eee; border-style:solid; border-color:#7ad7ff; }
+  #inventory .slot .weap-ico { font-size:18px; line-height:1; }
+  #inventory .slot .weap-name { font-size:7px; opacity:0.7; margin-top:1px; text-align:center; }
+  #inventory .slot .cnt { position:absolute; top:1px; right:3px; font-size:11px;
+    font-weight:bold; font-family:monospace; }
+  #inventory .slot .empty { font-size:18px; color:#334; }
 
   /* магазин — горизонтальный ряд квадратиков внизу канваса
      квадратики по нижнему краю, ряд в 1 строку, джойстик НАД ними */
@@ -260,7 +266,8 @@ function positionOverlays() {
   skillsDiv.style.transform = '';
 
   // ---- inventory: справа, по центру канваса ----
-  const invH = inventoryDiv.offsetHeight || 246;
+  // 6 слотов × 52 + 5 gap × 6 = 342px; используем реальную если есть
+  const invH = inventoryDiv.offsetHeight || 342;
   inventoryDiv.style.left = (r.right - 54) + 'px';
   inventoryDiv.style.top = (r.top + r.height / 2 - invH / 2) + 'px';
   inventoryDiv.style.transform = '';
@@ -518,7 +525,7 @@ function updateHud(state) {
     }
   });
 
-  // инвентарь: 6 слотов
+  // инвентарь: 6 слотов. Внутри иконка оружия + счётчик купленных копий (если > 1)
   const slots = [...inventoryDiv.querySelectorAll('.slot')];
   // подсчёт дублей для мерж-хинта
   const counts = {};
@@ -529,12 +536,22 @@ function updateHud(state) {
   slots.forEach((s, i) => {
     if (i < inv.length) {
       s.classList.add('filled');
-      const w = weapons[inv[i]];
-      const cnt = counts[inv[i]] || 1;
-      s.textContent = w ? (cnt > 1 ? `${w.name}×${cnt}` : w.name) : inv[i];
+      const wpnKey = inv[i];
+      const cnt = counts[wpnKey] || 1;
+      const wInfo = weapons[wpnKey];
+      const ico = WEAPON_ICONS[wpnKey] || '⚔';
+      // иконка оружия (крупно) + название (мелко) + счётчик в углу (если >1)
+      const dmgAt = ((Math.pow(0.75, cnt - 1)) * 100).toFixed(cnt > 1 ? 0 : 0);
+      const targetCount = cnt;            // копии == цели
+      const color = cnt >= 4 ? '#ff6644' : cnt >= 2 ? '#ffd54a' : '#7ad7ff';
+      s.innerHTML = `
+        <div class="weap-ico">${ico}</div>
+        <div class="weap-name">${wInfo ? wInfo.name : wpnKey}</div>
+        ${cnt > 1 ? `<div class="cnt" style="color:${color}">×${cnt}</div>` : ''}
+      `;
     } else {
       s.classList.remove('filled');
-      s.textContent = '+';
+      s.innerHTML = '<div class="empty">+</div>';
     }
   });
 
