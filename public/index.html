@@ -747,34 +747,48 @@ function draw(state) {
   }
 
   // ---------- НЕПРОХОДИМАЯ СТЕНА по центру (риф/коралловая гряда) ----------
+  // ТОЛЬКО В ЦЕНТРЕ КАРТЫ — открытые проходы сверху и снизу (согласовано с сервером)
   const wallX = W / 2;
   const wallW = 22;
+  const wallYTop = H / 2 - 130;
+  const wallYBot = H / 2 + 130;
   // основа стены — каменная полоса
   const wallGrd = ctx.createLinearGradient(wallX - wallW, 0, wallX + wallW, 0);
   wallGrd.addColorStop(0,    '#2a3a40');
   wallGrd.addColorStop(0.5,  '#4a5a48');
   wallGrd.addColorStop(1,    '#2a3a40');
   ctx.fillStyle = wallGrd;
-  ctx.fillRect(wallX - wallW, 0, wallW * 2, H);
-  // бугры на стене (статичные)
+  ctx.fillRect(wallX - wallW, wallYTop, wallW * 2, wallYBot - wallYTop);
+  // бугры на стене (статичные) — внутри диапазона
   ctx.fillStyle = '#3a4a44';
-  for (let i = 0; i < 12; i++) {
-    const by = (i / 12) * H + 5;
+  for (let i = 0; i < 10; i++) {
+    const by = wallYTop + (i / 10) * (wallYBot - wallYTop);
     ctx.beginPath();
     ctx.arc(wallX + (i % 2 === 0 ? -wallW - 2 : wallW + 2), by, 6 + (i % 3) * 2, 0, Math.PI*2);
     ctx.fill();
   }
-  // кораллы/водоросли сверху — обозначают "верхний вход" в коридоры
+  // маленькие водоросли внизу стены (у входа в нижний коридор)
   ctx.fillStyle = '#7a3a3a';
   for (let i = 0; i < 5; i++) {
     const cx = wallX + (i - 2) * 6;
     ctx.beginPath();
-    ctx.arc(cx, H - 6 + (i % 2) * 3, 3 + (i % 2) * 2, 0, Math.PI*2);
+    ctx.arc(cx, wallYBot + 4 + (i % 2) * 3, 3 + (i % 2) * 2, 0, Math.PI*2);
     ctx.fill();
   }
-  // текст-подсказка "СТЕНА" один раз в центре (мелко)
-  ctx.fillStyle = '#aab'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
-  ctx.fillText('◄ СТЕНА ►', wallX, 14);
+  // маленькие водоросли вверху стены (у входа в верхний коридор)
+  for (let i = 0; i < 5; i++) {
+    const cx = wallX + (i - 2) * 6;
+    ctx.beginPath();
+    ctx.arc(cx, wallYTop - 4 - (i % 2) * 3, 3 + (i % 2) * 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // подсказка проходов сверху/снизу
+  ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('▼ проход ▼', wallX, wallYTop - 14);
+  ctx.fillText('▲ проход ▲', wallX, wallYBot + 18);
+  // подсказка "СТЕНА"
+  ctx.fillStyle = '#aab';
+  ctx.fillText('◄ СТЕНА ►', wallX, H / 2 - 130 + 16);
 
   // базы
   for (const b of state.bases) {
