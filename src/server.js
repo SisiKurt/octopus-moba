@@ -806,14 +806,21 @@ io.on('connection', (socket) => {
 
   socket.on('buyWeapon', ({ weapon }) => {
     if (!WEAPONS[weapon] || !player) return;
-    if (player.gold < WEAPONS[weapon].price) return;
+    // ЦЕНА: каждый следующий мерж того же ствола — +20% от базовой цены
+    const basePrice = WEAPONS[weapon].price;
+    const haveCount = player.inventory.includes(weapon)
+      ? (player.weaponMerge && player.weaponMerge[weapon]) || 1
+      : 0;
+    // 1-й = базовая, 2-й = +20%, 3-й = +40%, и т.д. (скидка от количества сделанных мержей)
+    const price = Math.round(basePrice * (1 + haveCount * 0.20));
+    if (player.gold < price) return;
     if (player.inventory.length >= 6 && !player.inventory.includes(weapon)) return; // полон и нет такого
-    player.gold -= WEAPONS[weapon].price;
+    player.gold -= price;
 
-    // если уже есть — мержим (увеличиваем счетчик мержа)
+    // если уже есть — мержим (увеличиваем счетчик мержа, слот не занимаем!)
     if (player.inventory.includes(weapon)) {
       player.weaponMerge = player.weaponMerge || {};
-      player.weaponMerge[weapon] = (player.weaponMerge[weapon] || 1) + 1;
+      player.weaponMerge[weapon] = haveCount + 1;
     } else {
       player.inventory.push(weapon);
       player.weaponCooldowns[weapon] = 0;
