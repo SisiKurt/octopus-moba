@@ -263,6 +263,8 @@ document.querySelectorAll('#hero-pick button').forEach(btn => {
     joystick.style.display = 'block';
     skillsDiv.style.display = 'flex';
     inventoryDiv.style.display = 'flex';
+    // после показа UI — пересчитать позиции (offsetHeight теперь валидный)
+    setTimeout(positionOverlays, 0);
   };
 });
 
