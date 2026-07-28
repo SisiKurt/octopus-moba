@@ -184,9 +184,9 @@ let joyActive = null, joyCenter = null;
 let shopOpen = false;
 
 // ---------- resize canvas под экран (cover full screen, preserve logical 800x500 aspect) ----------
-const LOGICAL_W = 800;
-const LOGICAL_H = 500;
-const ASPECT = LOGICAL_W / LOGICAL_H; // 1.6
+const LOGICAL_W = 480;
+const LOGICAL_H = Math.round(LOGICAL_W * 16 / 9);  // 854 — мобильный портрет 9:16
+const ASPECT = LOGICAL_W / LOGICAL_H; // ~0.5625
 function resize() {
   cv.width = LOGICAL_W;
   cv.height = LOGICAL_H;
@@ -493,12 +493,65 @@ function draw(state) {
   const W = cv.width, H = cv.height;
   ctx.clearRect(0,0,W,H);
 
-  // коридоры (2 вертикальные полосы — left/right)
-  ctx.strokeStyle = '#2a3450';
-  ctx.lineWidth = 1;
-  for (const x of [W * 0.33, W * 0.67]) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  // ---------- ФОН: морское дно (песок + лёгкая рябь, статичный) ----------
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0,    '#0d3a5c');   // тёмно-синяя вода сверху
+  grd.addColorStop(0.35, '#155580');
+  grd.addColorStop(0.85, '#1e6e88');
+  grd.addColorStop(1,    '#3a5a3e');   // зеленовато-коричневый песок снизу
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+  // песчаные точки (статичный random seed)
+  ctx.fillStyle = 'rgba(220,200,160,0.35)';
+  for (let i = 0; i < 80; i++) {
+    const sx = ((i * 7919) % W);
+    const sy = H - ((i * 677) % Math.floor(H * 0.35));
+    const sz = 1 + (i % 3);
+    ctx.fillRect(sx, sy, sz, sz);
   }
+  // камешки
+  ctx.fillStyle = 'rgba(120,90,60,0.5)';
+  for (let i = 0; i < 25; i++) {
+    const sx = (i * 437) % W;
+    const sy = H - 10 - (i * 191) % Math.floor(H * 0.2);
+    ctx.beginPath(); ctx.arc(sx, sy, 1 + (i % 4), 0, Math.PI*2); ctx.fill();
+  }
+
+  // ---------- КОРИДОРЫ (2 полосы: left 33%, right 67%) ----------
+  ctx.fillStyle = 'rgba(150,200,255,0.06)';
+  for (const x of [W * 0.33, W * 0.67]) {
+    ctx.fillRect(x - 32, 0, 64, H);
+  }
+
+  // ---------- НЕПРОХОДИМАЯ СТЕНА по центру (риф/коралловая гряда) ----------
+  const wallX = W / 2;
+  const wallW = 22;
+  // основа стены — каменная полоса
+  const wallGrd = ctx.createLinearGradient(wallX - wallW, 0, wallX + wallW, 0);
+  wallGrd.addColorStop(0,    '#2a3a40');
+  wallGrd.addColorStop(0.5,  '#4a5a48');
+  wallGrd.addColorStop(1,    '#2a3a40');
+  ctx.fillStyle = wallGrd;
+  ctx.fillRect(wallX - wallW, 0, wallW * 2, H);
+  // бугры на стене (статичные)
+  ctx.fillStyle = '#3a4a44';
+  for (let i = 0; i < 12; i++) {
+    const by = (i / 12) * H + 5;
+    ctx.beginPath();
+    ctx.arc(wallX + (i % 2 === 0 ? -wallW - 2 : wallW + 2), by, 6 + (i % 3) * 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // кораллы/водоросли сверху — обозначают "верхний вход" в коридоры
+  ctx.fillStyle = '#7a3a3a';
+  for (let i = 0; i < 5; i++) {
+    const cx = wallX + (i - 2) * 6;
+    ctx.beginPath();
+    ctx.arc(cx, H - 6 + (i % 2) * 3, 3 + (i % 2) * 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // текст-подсказка "СТЕНА" один раз в центре (мелко)
+  ctx.fillStyle = '#aab'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('◄ СТЕНА ►', wallX, 14);
 
   // базы
   for (const b of state.bases) {
