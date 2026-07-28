@@ -6,7 +6,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 
 const PORT = process.env.PORT || 3001;
-const TICK_MS = 50;            // 20 тиков/сек
+const TICK_MS = 100;           // 10 тиков/сек (быстрее — Render ложится)
 const MAP_W = 800;
 const MAP_H = 500;
 
@@ -737,8 +737,15 @@ io.on('connection', (socket) => {
 });
 
 // ---------- Рассылка состояния ----------
+// Оптимизация: tick() считается всегда (для bots/mobs AI), но snapshot
+// рассылается ТОЛЬКО если есть подключённые игроки (Render Free душит CPU)
+let broadcastCount = 0;
 setInterval(() => {
   tick();
+  broadcastCount++;
+  const connectedPlayers = world.players.size;
+  if (connectedPlayers === 0) return;  // никого нет — сервер отдыхает
+  // snapshot создаём только если есть кому слать
   const snapshot = {
     tick: world.tick,
     matchStartedAt: world.matchStartedAt,

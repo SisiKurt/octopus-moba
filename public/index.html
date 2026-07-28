@@ -393,28 +393,69 @@ function updateHud(state) {
   }
 }
 
+// ---------- оптимизация: пре-рендерим осьминогов в offscreen canvas ----------
+// Каждый вариант рисуется ОДИН раз, потом просто drawImage — в 10x быстрее
+const OCTO_CACHE = {};
+function getOctopusSprite(key, color, size, legsCount, legsLen, ringColor) {
+  const k = `${key}_${color}_${size}_${legsCount}_${legsLen}_${ringColor||'none'}_${size}`;
+  if (OCTO_CACHE[k]) return OCTO_CACHE[k];
+  const off = document.createElement('canvas');
+  const R = Math.ceil(size + legsLen + 6);
+  off.width = off.height = R * 2;
+  const c = off.getContext('2d');
+  c.translate(R, R);
+  // 8 щупалец — STATIC без анимации (оптимизация CPU)
+  c.strokeStyle = color;
+  c.lineWidth = 2;
+  for (let i = 0; i < legsCount; i++) {
+    const a = (i / legsCount) * Math.PI * 2;
+    const ex = Math.cos(a + Math.PI/4) * (size + legsLen * 0.7);
+    const ey = Math.sin(a + Math.PI/4) * (size + legsLen * 0.7);
+    const tx = Math.cos(a) * (size + legsLen);
+    const ty = Math.sin(a) * (size + legsLen);
+    c.beginPath();
+    c.moveTo(Math.cos(a) * size, Math.sin(a) * size);
+    c.quadraticCurveTo(ex, ey, tx, ty);
+    c.stroke();
+  }
+  // тело
+  c.fillStyle = color;
+  c.beginPath(); c.arc(0, 0, size, 0, Math.PI*2); c.fill();
+  // глаза
+  c.fillStyle = '#fff';
+  c.beginPath(); c.arc(-size*0.35, -size*0.2, size*0.22, 0, Math.PI*2); c.fill();
+  c.beginPath(); c.arc( size*0.35, -size*0.2, size*0.22, 0, Math.PI*2); c.fill();
+  c.fillStyle = '#000';
+  c.beginPath(); c.arc(-size*0.35, -size*0.2, size*0.1, 0, Math.PI*2); c.fill();
+  c.beginPath(); c.arc( size*0.35, -size*0.2, size*0.1, 0, Math.PI*2); c.fill();
+  // ring (для range creeps) — рисуем ДО тела, но здесь после — поверх
+  if (ringColor) {
+    c.strokeStyle = ringColor;
+    c.lineWidth = 2;
+    c.beginPath(); c.arc(0, 0, size + 3, 0, Math.PI*2); c.stroke();
+  }
+  OCTO_CACHE[k] = off;
+  return off;
+}
+
 // ---------- отрисовка ----------
+let drawScheduled = false;
 function draw(state) {
   try {
   const W = cv.width, H = cv.height;
   ctx.clearRect(0,0,W,H);
 
-  // коридоры (3 вертикальные полосы)
+  // коридоры (2 вертикальные полосы — left/right)
   ctx.strokeStyle = '#2a3450';
   ctx.lineWidth = 1;
-  for (const x of [160, W/2, W-160]) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0); ctx.lineTo(x, H);
-    ctx.stroke();
+  for (const x of [W * 0.33, W * 0.67]) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
   }
 
   // базы
   for (const b of state.bases) {
     ctx.fillStyle = b.owner === 'blue' ? '#224488' : '#882222';
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, 30, 0, Math.PI*2);
-    ctx.fill();
-    // хп базы
+    ctx.beginPath(); ctx.arc(b.x, b.y, 30, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#400';
     ctx.fillRect(b.x-25, b.y-40, 50, 6);
     ctx.fillStyle = '#0d4';
@@ -427,61 +468,17 @@ function draw(state) {
   // магазин (маркер у синей базы)
   if (state.shop) {
     ctx.fillStyle = '#ffaa00';
-    ctx.beginPath();
-    ctx.arc(state.shop.x, state.shop.y, 18, 0, Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(state.shop.x, state.shop.y, 18, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#000'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
     ctx.fillText('SHOP', state.shop.x, state.shop.y+3);
   }
 
-  // осьминог (герой или крип)
-  function drawOctopus(x, y, color, size, legsCount, legsLen, angleOffset = 0, tier = 0, mobColor2 = null) {
-    ctx.save();
-    ctx.translate(x, y);
-    // 8 щупалец (анимация — качаются)
-    const t = Date.now() / 200;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    for (let i = 0; i < legsCount; i++) {
-      const a = (i / legsCount) * Math.PI * 2 + angleOffset + Math.sin(t + i) * 0.15;
-      const lx = Math.cos(a) * (size + legsLen);
-      const ly = Math.sin(a) * (size + legsLen);
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * size, Math.sin(a) * size);
-      ctx.quadraticCurveTo(
-        Math.cos(a + Math.PI/4) * (size + legsLen * 0.7),
-        Math.sin(a + Math.PI/4) * (size + legsLen * 0.7),
-        lx, ly
-      );
-      ctx.stroke();
-    }
-    // тело (голова)
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(0, 0, size, 0, Math.PI*2);
-    ctx.fill();
-    // глаза
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(-size*0.3, -size*0.2, size*0.25, 0, Math.PI*2);
-    ctx.arc(size*0.3, -size*0.2, size*0.25, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(-size*0.3, -size*0.2, size*0.12, 0, Math.PI*2);
-    ctx.arc(size*0.3, -size*0.2, size*0.12, 0, Math.PI*2);
-    ctx.fill();
-    // tier-индикатор (для мобов)
-    if (tier > 0 && mobColor2) {
-      ctx.strokeStyle = mobColor2;
-      ctx.lineWidth = 2 + tier;
-      ctx.beginPath();
-      ctx.arc(0, 0, size + 3, 0, Math.PI*2);
-      ctx.stroke();
-    }
-    ctx.restore();
+  // осьминог — это ОБЪЕКТ offscreen canvas, рисуется drawImage (быстро)
+  function drawOctopus(x, y, color, size, legsCount, legsLen, angleOffset = 0, tier = 0, ringColor = null) {
+    const sprite = getOctopusSprite('octo', color, size, 8, 4, ringColor);
+    const R = sprite.width / 2;
+    ctx.drawImage(sprite, Math.round(x - R), Math.round(y - R));
   }
-
   // осьминоги-крипы (variant: tank=круг толстый, range=ромб)
   for (const m of state.mobs) {
     const variantColor = m.variant === 'range' ? '#ffdd44' : null;  // жёлтая обводка для range
@@ -555,8 +552,8 @@ function draw(state) {
     setStatus('💥 draw err: ' + (e.message||e), false);
     return;
   }
-  // следующий кадр — чтобы мир не зависал между state-ами
-  requestAnimationFrame(() => draw(lastState));
+  // перерисовка ТОЛЬКО когда придёт новый state (10 fps server tick)
+  // никакого requestAnimationFrame — дёшево для CPU телефона
 }
 
 // первый ресайз
