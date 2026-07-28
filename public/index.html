@@ -43,37 +43,37 @@
   #hero-pick button.blue  { border-color:#4488ff; }
   #hero-pick button.purple{ border-color:#cc44ff; }
 
-  /* джойстик слева внизу */
-  #joystick { position:absolute; bottom:30px; left:30px; width:120px; height:120px;
+  /* джойстик — позиционируется из JS относительно канваса */
+  #joystick { position:absolute; width:120px; height:120px;
     background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.2);
     border-radius:50%; z-index:10; touch-action:none; display:none; }
   #joystick .knob { position:absolute; left:50%; top:50%; width:50px; height:50px;
     background:rgba(255,255,255,.4); border-radius:50%; transform:translate(-50%,-50%); }
 
-  /* скиллы — слева по центру (вертикально) */
-  #skills { position:absolute; left:10px; top:50%; transform:translateY(-50%);
+  /* скиллы — позиционируется из JS относительно канваса */
+  #skills { position:absolute;
     display:flex; flex-direction:column; gap:8px; z-index:10; display:none; }
   #skills button { width:54px; height:54px; background:#1d2742; color:#eee; border:1px solid #334; border-radius:6px; font-size:11px; position:relative; }
   #skills button .lvl { position:absolute; bottom:2px; right:4px; color:#ffd54a; }
 
-  /* инвентарь — справа по центру (вертикально) */
-  #inventory { position:absolute; right:10px; top:50%; transform:translateY(-50%);
+  /* инвентарь — позиционируется из JS относительно канваса */
+  #inventory { position:absolute;
     display:flex; flex-direction:column; gap:6px; z-index:10; display:none; }
   #inventory .slot { width:54px; height:44px; background:#0e1424; color:#556;
     border:1px dashed #334; border-radius:6px; font-size:11px;
     display:flex; align-items:center; justify-content:center; }
   #inventory .slot.filled { background:#1d2742; color:#eee; border-style:solid; border-color:#7ad7ff; }
 
-  /* магазин — у базы снизу, появляется когда близко */
-  #shop { position:absolute; bottom:30px; left:50%; transform:translateX(-50%);
+  /* магазин — позиционируется из JS относительно канваса */
+  #shop { position:absolute; left:50%; transform:translateX(-50%);
     display:flex; flex-direction:column; gap:6px; align-items:center; z-index:10; display:none; }
   #shop button { padding:8px 10px; background:#1d2742; color:#eee; border:1px solid #334; border-radius:6px; font-size:12px; min-width:120px; text-align:center; }
   #shop button.owned { opacity:.5; background:#103a1f; border-color:#22dd66; }
   #shop button:disabled { opacity:.4; }
   #shop .merge-hint { font-size:10px; color:#888; margin-top:4px; text-align:center; }
 
-  /* индикатор "магазин доступен" */
-  #shop-indicator { position:absolute; bottom:110px; left:50%; transform:translateX(-50%);
+  /* индикатор "магазин доступен" — позиционируется из JS относительно канваса */
+  #shop-indicator { position:absolute; left:50%; transform:translateX(-50%);
     background:#22dd66; color:#000; padding:4px 10px; border-radius:12px; font-size:11px; display:none; z-index:10; }
 
   /* мерж-подсказка в инвентаре */
@@ -219,9 +219,36 @@ function resize() {
   cv.style.left = ((vw - cssW) / 2) + 'px';
   cv.style.top = (TOP_RESERVED + (vhSafe - cssH) / 2) + 'px';
 }
-window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+// ---------- позиционирование UI-оверлеев поверх канваса ----------
+// (shop, shop-indicator, joystick, skills, inventory располагаются
+//  относительно канваса, чтобы не перекрывать нижнюю часть карты)
+function positionOverlays() {
+  const r = cv.getBoundingClientRect();   // реальные экранные координаты канваса
+  // shop — по центру внизу канваса
+  shop.style.left = (r.left + r.width / 2) + 'px';
+  shop.style.bottom = '';
+  shop.style.top = (r.bottom - 30) + 'px';
+  shop.style.transform = 'translateX(-50%)';
+  // shop-indicator — чуть выше shop
+  shopIndicator.style.left = (r.left + r.width / 2) + 'px';
+  shopIndicator.style.bottom = '';
+  shopIndicator.style.top = (r.bottom - 110) + 'px';
+  shopIndicator.style.transform = 'translateX(-50%)';
+  // joystick — снизу-слева в пределах канваса
+  joystick.style.left = (r.left + 30) + 'px';
+  joystick.style.bottom = '';
+  joystick.style.top = (r.bottom - 150) + 'px';
+  // skills — слева по центру канваса
+  skillsDiv.style.left = (r.left + 10) + 'px';
+  skillsDiv.style.top = (r.top + r.height / 2) + 'px';
+  // inventory — справа по центру канваса
+  inventoryDiv.style.left = (r.right - 64) + 'px';
+  inventoryDiv.style.top = (r.top + r.height / 2) + 'px';
+}
+window.addEventListener('resize', () => { resize(); positionOverlays(); });
+window.addEventListener('orientationchange', () => setTimeout(() => { resize(); positionOverlays(); }, 100));
 resize();
+positionOverlays();
 
 // ---------- выбор героя ----------
 document.querySelectorAll('#hero-pick button').forEach(btn => {
