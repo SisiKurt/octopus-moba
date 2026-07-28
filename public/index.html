@@ -242,9 +242,13 @@ function positionOverlays() {
   // компоновка: ряд квадратиков 64×64, gap 6px, +18 под merge-hint
   // когда shop скрыт (display:none) или детей нет — размер оцениваем по умолчанию
   const shopKids = Math.max(shop.children.length, 6);   // >=6 для будущих стволов
-  const colsPerRow = Math.max(1, Math.floor((r.width - 30) / 70));   // ~6 для 480
+  // кол-во колонок: квадратик 64 + gap 6 = 70; умещается в (canvas_width - 20) / 70
+  const colsPerRow = Math.max(1, Math.floor((r.width - 20) / 70));   // ~6 для 480
   const rows = Math.max(1, Math.ceil(shopKids / colsPerRow));
   const shopH = rows * 64 + (rows - 1) * 6 + 18;  // +18 под merge-hint
+  // ширина shop: при wide-bottoms (>=6 стволов в ряд) разрешаем нависать на ±30px по бокам от канваса
+  const shopMaxW = r.width + 60;
+  shop.style.maxWidth = shopMaxW + 'px';
   shop.style.left = (r.left + r.width / 2) + 'px';
   shop.style.bottom = '';
   shop.style.top = (r.bottom - shopH) + 'px';
