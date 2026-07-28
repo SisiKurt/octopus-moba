@@ -527,15 +527,16 @@ function draw(state) {
     const R = sprite.width / 2;
     ctx.drawImage(sprite, Math.round(x - R), Math.round(y - R));
   }
-  // осьминоги-крипы (variant: tank=круг толстый, range=ромб)
+  // осьминоги-крипы (variant: 0=tank, 1=range; size приходит с сервера)
   for (const m of state.mobs) {
-    const variantColor = m.variant === 'range' ? '#ffdd44' : null;  // жёлтая обводка для range
-    const size = m.variant === 'range' ? 8 : 10;                     // tank чуть крупнее
-    drawOctopus(m.x, m.y, m.color, size, 8, 4, 0, 0, variantColor);
+    const isRange = m.variant === 1 || m.variant === 'range';
+    const ringColor = isRange ? '#ffdd44' : null;   // жёлтая обводка для range
+    const size = m.size || (isRange ? 8 : 10);
+    drawOctopus(m.x, m.y, m.color, size, 8, 4, 0, 0, ringColor);
     // хп-бар
     ctx.fillStyle = '#000';
     ctx.fillRect(m.x-10, m.y-size-8, 20, 2);
-    ctx.fillStyle = m.variant === 'range' ? '#ffdd44' : '#fff';
+    ctx.fillStyle = isRange ? '#ffdd44' : '#fff';
     ctx.fillRect(m.x-10, m.y-size-8, 20 * (m.hp/m.maxHp), 2);
   }
 
