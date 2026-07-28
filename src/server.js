@@ -78,18 +78,29 @@ function createWorld() {
 
 const world = createWorld();
 
+// helper: выбрать X в одном из 2 коридоров (НЕ в стене)
+function pickLaneX() {
+  return (Math.random() < 0.5 ? world.lanes.left.x : world.lanes.right.x) + (Math.random()-0.5)*20;
+}
+
 // ---------- Центральная стена (непроходимая, риф) ----------
-// Стена в центре карты: x ∈ [MAP_W/2 - WALL_W, MAP_W/2 + WALL_W]
-// Если объект (x, y) попадает в стену — выталкиваем по горизонтали.
+// Стена В ЦЕНТРЕ КАРТЫ: x ∈ [MAP_W/2 - WALL_W, MAP_W/2 + WALL_W], но НЕ на всю высоту!
+// Только средняя треть по Y: [WALL_Y_TOP, WALL_Y_BOT]
+// Сверху и снизу — открытые проходы, герой может перейти из одного коридора в другой
 const WALL_W = 22; // ширина стены (половина), согласовано с клиентом
+const WALL_Y_TOP = MAP_H / 2 - 130;   // верхний конец стены (выход к красной)
+const WALL_Y_BOT = MAP_H / 2 + 130;   // нижний конец стены (выход к синей)
 function blockCentralWall(x, y, radius) {
-  const wx1 = MAP_W / 2 - WALL_W - radius;
-  const wx2 = MAP_W / 2 + WALL_W + radius;
-  if (x > wx1 && x < wx2) {
-    // смотрим какая сторона ближе
-    const distLeft  = x - wx1;
-    const distRight = wx2 - x;
-    x = (distLeft < distRight) ? wx1 : wx2;
+  // стена существует только между WALL_Y_TOP и WALL_Y_BOT (центр карты)
+  if (y > WALL_Y_TOP - radius && y < WALL_Y_BOT + radius) {
+    const wx1 = MAP_W / 2 - WALL_W - radius;
+    const wx2 = MAP_W / 2 + WALL_W + radius;
+    if (x > wx1 && x < wx2) {
+      // смотрим какая сторона ближе
+      const distLeft  = x - wx1;
+      const distRight = wx2 - x;
+      x = (distLeft < distRight) ? wx1 : wx2;
+    }
   }
   return [x, y];
 }
@@ -106,7 +117,8 @@ function newPlayer(socketId, heroKey) {
     shape: def.shape,
     team: 'blue',                 // MVP: все в blue, потом разделим
     // старт у синей базы (снизу по центру)
-    x: MAP_W/2 + (Math.random()-0.5)*30,
+    // старт у синей базы — выбираем один из 2-х коридоров (left или right), чтобы НЕ ЗАСТРЯТЬ в стене
+    x: (Math.random() < 0.5 ? world.lanes.left.x : world.lanes.right.x) + (Math.random()-0.5)*20,
     y: MAP_H - 100,
     hp: def.baseStats.hp,
     maxHp: def.baseStats.hp,
@@ -138,7 +150,7 @@ function newBot(heroKey, team) {
     color: def.color,
     shape: def.shape,
     team,
-    x: (team === 'red' ? MAP_W/2 : MAP_W/2) + (Math.random()-0.5)*60,
+    x: pickLaneX(),
     y: team === 'red' ? 100 : MAP_H - 130,
     hp: def.baseStats.hp, maxHp: def.baseStats.hp,
     speed: def.baseStats.speed * 0.85,  // бот чуть медленнее
@@ -324,7 +336,7 @@ function tick() {
         if (goal.hero && goal.hp <= 0) {
           const def = HERO_DEFS[goal.hero];
           goal.hp = def.baseStats.hp;
-          goal.x = MAP_W/2 + (Math.random()-0.5)*60;
+          goal.x = pickLaneX();
           goal.y = MAP_H - 130;
         }
       }
@@ -419,7 +431,7 @@ function tick() {
           const def = HERO_DEFS[goal.hero];
           goal.hp = def.baseStats.hp;
           // респаун у синей базы (снизу)
-          goal.x = MAP_W/2 + (Math.random()-0.5)*60;
+          goal.x = pickLaneX();
           goal.y = MAP_H - 130;
         }
       }
