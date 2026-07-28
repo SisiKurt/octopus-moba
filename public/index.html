@@ -499,9 +499,23 @@ function updateHud(state) {
   lvlEl.textContent = 'Lv ' + p.level;
   const inv = p.inventory || [];
 
-  // магазин: купленные — .owned
+  // магазин: купленные — .owned + динамическая цена +20% за каждый мерж
   [...shop.querySelectorAll('button[data-weapon]')].forEach(b => {
-    b.classList.toggle('owned', inv.includes(b.dataset.weapon));
+    const k = b.dataset.weapon;
+    const owned = inv.includes(k);
+    b.classList.toggle('owned', owned);
+    const basePrice = weapons[k]?.price || 0;
+    const mergeCount = owned ? (p.weaponMerge?.[k] || 1) : 0;
+    const curPrice = Math.round(basePrice * (1 + mergeCount * 0.20));
+    const priceEl = b.querySelector('.price');
+    if (priceEl && basePrice > 0) {
+      // показываем текущую цену; если не хватает золота — подсветить красным
+      const cant = p.gold < curPrice;
+      priceEl.textContent = curPrice + '$';
+      priceEl.style.color = cant ? '#ff6644' : '#ffd54a';
+      // подсветить кнопку как «слишком дорого»
+      b.disabled = cant;
+    }
   });
 
   // инвентарь: 6 слотов
