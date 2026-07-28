@@ -3,7 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>MOBA proto</title>
+<meta name="theme-color" content="#0a0a14">
+<meta name="description" content="🐙 Octopus MOBA — браузерная MOBA про осьминогов. Tank, Range, Mine. PvP в реальном времени.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Octopus MOBA">
+<meta property="og:title" content="🐙 Octopus MOBA">
+<meta property="og:description" content="MOBA про осьминогов онлайн. PvP в реальном времени.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/icon-512.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>🐙 Octopus MOBA</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { width:100%; height:100%; background:#0a0a14; color:#eee; font-family:system-ui,sans-serif; overflow:hidden; }
@@ -558,6 +571,13 @@ function draw(state) {
 
 // первый ресайз
 resize();
+
+// ---------- PWA ----------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 </script>
 </div>
 </body>
