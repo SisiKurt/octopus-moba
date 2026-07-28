@@ -113,7 +113,7 @@
   <div id="shop"></div>
   <div id="shop-indicator">Магазин рядом ⬇</div>
   <div id="merge-hint">Одно оружие ×2 = мерж</div>
-  <div id="waking" style="display:none;position:absolute;inset:0;background:rgba(10,10,20,.95);z-index:50;align-items:center;justify-content:center;flex-direction:column;color:#eee;font-family:system-ui;text-align:center;padding:20px;">
+  <div id="waking" style="display:none;position:absolute;inset:0;background:rgba(10,10,20,.85);z-index:50;align-items:center;justify-content:center;flex-direction:column;color:#eee;font-family:system-ui;text-align:center;padding:20px;pointer-events:none;transition:opacity .4s;opacity:1;">
     <div style="font-size:48px;">🐙💤</div>
     <h2 style="margin:14px 0;">Render просыпается…</h2>
     <p style="opacity:.7;font-size:14px;max-width:280px;">Free инстанс засыпает через 15 мин простоя.<br>Первый запуск после сна ≈ 30-90 сек.<br>Подожди и НЕ перезагружай страницу.</p>
@@ -127,14 +127,21 @@
 const waking = document.getElementById('waking');
 const wakingRetry = document.getElementById('waking-retry');
 
-// Показать waking сразу, спрятать после полного цикла init
+// Показать waking сразу
 waking.style.display = 'flex';
 let appReady = false;
-window.addEventListener('appready', () => {
-  waking.style.display = 'none';
+function hideWaking() {
+  if (appReady) return;
   appReady = true;
-});
+  waking.style.opacity = '0';
+  setTimeout(() => { waking.style.display = 'none'; }, 400);
+  if (pokeInterval) { clearInterval(pokeInterval); pokeInterval = null; }
+  if (wakeTimer) { clearTimeout(wakeTimer); wakeTimer = null; }
+}
+window.addEventListener('appready', hideWaking);
 
+// safety net: спрятать overlay через 8 сек в любом случае (даже если state не пришёл)
+setTimeout(hideWaking, 8000);
 </script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
