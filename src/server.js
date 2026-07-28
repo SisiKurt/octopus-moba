@@ -7,8 +7,8 @@ import { Server } from 'socket.io';
 
 const PORT = process.env.PORT || 3001;
 const TICK_MS = 50;            // 20 тиков/сек
-const MAP_W = 800;
-const MAP_H = 500;
+const MAP_W = 480;                 // ширина карты (мобильный портрет, ~9:16)
+const MAP_H = Math.round(MAP_W * 16 / 9);  // 480 × 16/9 = 854 — высота карты
 
 const app = express();
 const server = http.createServer(app);
@@ -77,6 +77,22 @@ function createWorld() {
 }
 
 const world = createWorld();
+
+// ---------- Центральная стена (непроходимая, риф) ----------
+// Стена в центре карты: x ∈ [MAP_W/2 - WALL_W, MAP_W/2 + WALL_W]
+// Если объект (x, y) попадает в стену — выталкиваем по горизонтали.
+const WALL_W = 22; // ширина стены (половина), согласовано с клиентом
+function blockCentralWall(x, y, radius) {
+  const wx1 = MAP_W / 2 - WALL_W - radius;
+  const wx2 = MAP_W / 2 + WALL_W + radius;
+  if (x > wx1 && x < wx2) {
+    // смотрим какая сторона ближе
+    const distLeft  = x - wx1;
+    const distRight = wx2 - x;
+    x = (distLeft < distRight) ? wx1 : wx2;
+  }
+  return [x, y];
+}
 
 // ---------- Игрок ----------
 function newPlayer(socketId, heroKey) {
@@ -287,8 +303,10 @@ function tick() {
       const dy = goal.y - m.y;
       const d = Math.hypot(dx, dy);
       if (d > m.range) {
-        m.x += (dx/d) * m.speed;
-        m.y += (dy/d) * m.speed;
+        let nx = m.x + (dx/d) * m.speed;
+        let ny = m.y + (dy/d) * m.speed;
+        [nx, ny] = blockCentralWall(nx, ny, 8);
+        m.x = nx; m.y = ny;
       }
       // атака
       if (d <= m.range && m.cooldown <= 0) {
@@ -536,15 +554,17 @@ function tick() {
       }
     }
 
-    // ---- MOVEMENT ----
+    // ---- MOVEMENT (с учётом стены по центру) ----
     const dx = bot.targetX - bot.x;
     const dy = bot.targetY - bot.y;
     const dd = Math.hypot(dx, dy);
     if (dd > 4) {
-      bot.x += (dx/dd) * bot.speed;
-      bot.y += (dy/dd) * bot.speed;
-      bot.x = Math.max(10, Math.min(MAP_W-10, bot.x));
-      bot.y = Math.max(10, Math.min(MAP_H-10, bot.y));
+      let nx = bot.x + (dx/dd) * bot.speed;
+      let ny = bot.y + (dy/dd) * bot.speed;
+      // отталкиваем от центральной стены
+      [nx, ny] = blockCentralWall(nx, ny, 12);
+      bot.x = Math.max(10, Math.min(MAP_W-10, nx));
+      bot.y = Math.max(10, Math.min(MAP_H-10, ny));
     }
 
     // ---- SHOOTING (тот же pickTargets, что и у игрока) ----
@@ -702,10 +722,11 @@ io.on('connection', (socket) => {
       if (data.keys.right) dx += 1;
       const len = Math.hypot(dx, dy);
       if (len > 0) {
-        player.x += (dx/len) * player.speed;
-        player.y += (dy/len) * player.speed;
-        player.x = Math.max(10, Math.min(MAP_W-10, player.x));
-        player.y = Math.max(10, Math.min(MAP_H-10, player.y));
+        let nx = player.x + (dx/len) * player.speed;
+        let ny = player.y + (dy/len) * player.speed;
+        [nx, ny] = blockCentralWall(nx, ny, 12);
+        player.x = Math.max(10, Math.min(MAP_W-10, nx));
+        player.y = Math.max(10, Math.min(MAP_H-10, ny));
       }
     }
     if (data.aim) {
