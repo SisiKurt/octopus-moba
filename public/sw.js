@@ -1,6 +1,6 @@
 // Service Worker для Octopus MOBA
 // Стратегия: cache-first для статики, network-first для state/socket.io
-const CACHE = 'octopus-moba-v1';
+const CACHE = 'octopus-moba-v2';
 const STATIC = [
   '/',
   '/manifest.json',
