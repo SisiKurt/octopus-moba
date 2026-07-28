@@ -592,9 +592,9 @@ function tick() {
       if (!wpn) continue;
       if ((bot.weaponCooldowns[wKey] || 0) > 0) continue;
       const mergeCount = (bot.weaponMerge && bot.weaponMerge[wKey]) || 1;
-      const isMerged = mergeCount >= 2;
-      const dmgMul = isMerged ? 0.75 : 1;
-      const targets = isMerged ? 2 : 1;
+      // прогрессивный множитель целей: 1к=1цель×1.0, 2к=2цели×0.75, 3к=3цели×0.75^2, ...
+      const targets = mergeCount;
+      const dmgMul = Math.pow(0.75, mergeCount - 1);
       bot.weaponCooldowns[wKey] = wpn.cooldown;
       const targetsList = pickTargets(bot, wpn.range, targets);
       if (targetsList.length === 0) continue;
@@ -766,9 +766,9 @@ io.on('connection', (socket) => {
 
       // мерж: если 2+ одинаковых ствола — стреляем по 2 целям с 75% урона
       const mergeCount = (player.weaponMerge && player.weaponMerge[wKey]) || 1;
-      const isMerged = mergeCount >= 2;
-      const dmgMul = isMerged ? 0.75 : 1.0;
-      const targets = isMerged ? 2 : 1;
+      // прогрессивный множитель целей: 1к=1цель×1.0, 2к=2цели×0.75, 3к=3цели×0.75^2, ...
+      const targets = mergeCount;
+      const dmgMul = Math.pow(0.75, mergeCount - 1);
 
       player.weaponCooldowns[wKey] = wpn.cooldown;
 
