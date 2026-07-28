@@ -257,14 +257,17 @@ function positionOverlays() {
   // ---- shop-indicator: маленькая плашка чуть выше shop ----
   shopIndicator.style.left = (r.left + r.width / 2) + 'px';
   shopIndicator.style.bottom = '';
-  shopIndicator.style.top = (r.bottom - shopH - 24) + 'px';
+  const indTop = Math.max(r.top + 6, r.bottom - shopH - 24);
+  shopIndicator.style.top = indTop + 'px';
   shopIndicator.style.transform = 'translateX(-50%)';
 
   // ---- joystick: слева внизу, НАД shop (а не под ним) ----
   // joystick 120×120, ставим НАД магазином, чтобы палец не тянулся через квадратики
+  // minTop = cv.top+10 (чтобы не уехать выше канваса)
   joystick.style.left = (r.left + 18) + 'px';
   joystick.style.bottom = '';
-  joystick.style.top = (r.bottom - shopH - 132) + 'px';   // 120px + 12px зазор
+  const joyTop = Math.max(r.top + 10, r.bottom - shopH - 132);
+  joystick.style.top = joyTop + 'px';   // 120px + 12px зазор
 
   // ---- skills: слева, по центру канваса ----
   const skillsH = skillsDiv.offsetHeight || 304;
