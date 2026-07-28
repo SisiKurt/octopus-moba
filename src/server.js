@@ -6,7 +6,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 
 const PORT = process.env.PORT || 3001;
-const TICK_MS = 100;           // 10 тиков/сек (быстрее — Render ложится)
+const TICK_MS = 50;            // 20 тиков/сек
 const MAP_W = 800;
 const MAP_H = 500;
 
@@ -44,8 +44,7 @@ const HERO_DEFS = {
     baseStats: { hp: 110, hpReg: 1.5, speed: 3.2, armor: 1 },
     passivePerLevel: { hp: 6, dmg: 1.5, speed: 0.15 } },
   tank: { name: 'Танк', color: '#4488ff', shape: 'square',
-    // speed x 1.25 от базы для большей мобильности
-    baseStats: { hp: 200, hpReg: 1.0, speed: 2.4 * 1.25, armor: 5 },
+    baseStats: { hp: 200, hpReg: 1.0, speed: 2.4, armor: 5 },
     passivePerLevel: { hp: 18, armor: 1.2 } },
   miner: { name: 'Минёр', color: '#cc44ff', shape: 'square',
     baseStats: { hp: 95, hpReg: 1.2, speed: 2.8, armor: 1 },
@@ -58,31 +57,18 @@ function createWorld() {
     tick: 0,
     mapW: MAP_W,
     mapH: MAP_H,
-    matchStartedAt: Date.now(),  // старт таймера дуэли
-    // базы — обе по центру карты (по X), синяя внизу, красная сверху
-    // стены вокруг каждой — tank-friendly локация (лечит героев рядом)
     bases: [
-      { id: 'blue',  x: MAP_W/2, y: MAP_H-60, hp: 500, maxHp: 500, owner: 'blue'  },
-      { id: 'red',   x: MAP_W/2, y: 60,      hp: 500, maxHp: 500, owner: 'red' },
+      // blue (твоя) — снизу по центру, красная — сверху
+      { id: 'blue',  x: MAP_W/2, y: MAP_H-80, hp: 500, maxHp: 500, owner: 'blue'  },
+      { id: 'red',   x: MAP_W/2, y: 80,      hp: 500, maxHp: 500, owner: 'red' },
     ],
     // магазин — рядом с твоей базой (снизу по центру, чуть левее)
     shop: { x: MAP_W/2 - 120, y: MAP_H - 80 },
     lanes: {
-      // 2 вертикальных коридора (left / right) — mid удалён для производительности
-      left:  { x: MAP_W * 0.33, mobs: [] },
-      right: { x: MAP_W * 0.67, mobs: [] },
-    },
-    // волновое расписание: крип рождается только когда предыдущий того же типа в том же коридоре умер
-    // waveCounter[laneName][team][variant] = сколько живых сейчас
-    waveCounter: {
-      left:  { blue: { tank: 0, range: 0 }, red: { tank: 0, range: 0 } },
-      right: { blue: { tank: 0, range: 0 }, red: { tank: 0, range: 0 } },
-    },
-    // вариант следующего крипа (чередование tank/range после каждой смерти)
-    // 0 = tank, 1 = range
-    nextVariant: {
-      left:  { blue: 0, red: 0 },
-      right: { blue: 0, red: 0 },
+      // 3 вертикальных коридора (left / mid / right)
+      left:  { x: 160,           mobs: [] },
+      mid:   { x: MAP_W/2,       mobs: [] },
+      right: { x: MAP_W - 160,   mobs: [] },
     },
     players: new Map(), // socket.id -> player
     bots: [],           // боты-осьминоги: [{id, ...player-like, state, ...}]
@@ -188,48 +174,32 @@ function recomputeStats(p) {
 }
 
 // ---------- Мобы ----------
-// variant: 'tank' (ближний бой, много HP) или 'range' (дальняя атака, меньше HP)
-function spawnMob(laneName, team, variant) {
-  // blue (союзные) спавнятся у синей базы (внизу), идут вверх к красной
-  // red (вражеские) спавнятся у красной базы (вверху), идут вниз к синей
+function spawnMob(laneName, team) {
+  // blue спавнятся у красной базы (сверху) и идут вниз к blue-базе
+  // red спавнятся у синей базы (снизу) и идут вверх к red-базе
   const lane = world.lanes[laneName];
-  const fromOurBase = team === 'blue';
-  const spawnY = fromOurBase ? MAP_H - 80 : 80;
-  const isRange = variant === 'range';
-  // tank: HP много, броня есть, dmg большой, range 18 (ближний)
-  // range: HP средне, броня 0, dmg средний, range 80 (дальний)
-  const stats = isRange
-    ? { hp: 24, armor: 0, dmg: 4, range: 80,  speed: 0.9, color: team === 'blue' ? '#66bbff' : '#ff8866', shape: 'diamond' }
-    : { hp: 60, armor: 2, dmg: 6, range: 18,  speed: 0.7, color: team === 'blue' ? '#2266cc' : '#cc3322', shape: 'circle' };
+  const spawnY = team === 'blue' ? 80 : MAP_H - 80;
+  // разброс силы: 0..2 (tier), влияет на hp/armor/dmg/speed
+  const tier = Math.floor(Math.random() * 3);  // 0=слабый, 1=средний, 2=сильный
+  const tierMult = [1, 1.8, 3.2][tier];
   return {
     id: world.nextId++,
     team,
-    variant,
-    shape: stats.shape,
-    color: stats.color,
-    x: lane.x + (Math.random()-0.5)*30,
-    y: spawnY,
-    hp: stats.hp,
-    maxHp: stats.hp,
-    speed: stats.speed,
-    dmg: stats.dmg,
-    range: stats.range,
-    armor: stats.armor,
+    shape: 'circle',
+    color: team === 'blue' ? '#3399ff' : '#ff5544',
+    tier,
+    x: lane.x + (Math.random()-0.5)*40,
+    y: spawnY + (team === 'blue' ? 30 : -30),
+    hp: 30 * tierMult,
+    maxHp: 30 * tierMult,
+    speed: 0.9 + tier * 0.15,
+    dmg: 3 + tier * 2,
+    range: 18,
+    armor: tier,                          // 0..2
     cooldown: 0,
     lane: laneName,
     target: null,
   };
-}
-
-// Одна волна в начале матча — без неё нечего чередовать
-function seedInitialWave() {
-  for (const laneName of Object.keys(world.lanes)) {
-    // синий танк → красный танк (зеркально)
-    world.lanes[laneName].mobs.push(spawnMob(laneName, 'blue', 'tank'));
-    world.lanes[laneName].mobs.push(spawnMob(laneName, 'red',  'tank'));
-    world.waveCounter[laneName].blue.tank = 1;
-    world.waveCounter[laneName].red.tank = 1;
-  }
 }
 
 // ---------- Снаряды ----------
@@ -257,74 +227,55 @@ const allMobs = () => Object.values(world.lanes).flatMap(l => l.mobs);
 function tick() {
   world.tick++;
 
-  // мобы: спавнятся ТОЛЬКО на смерть предыдущего (см. секцию ниже)
-  // (раньше был spawn по таймеру — убран, чтобы карта была стабильной: 2 lane × 2 team = 4 живых)
+  // спавн мобов: раз в ~80 тиков в каждую линию
+  if (world.tick % 80 === 0) {
+    for (const laneName of Object.keys(world.lanes)) {
+      world.lanes[laneName].mobs.push(spawnMob(laneName, 'blue'));
+      world.lanes[laneName].mobs.push(spawnMob(laneName, 'red'));
+    }
+  }
 
-  // игроки: тикаем кулдауны стволов + регенерация HP у своей базы
+  // игроки: тикаем кулдауны каждого ствола в инвентаре
   for (const p of world.players.values()) {
     for (const wKey of Object.keys(p.weaponCooldowns)) {
       if (p.weaponCooldowns[wKey] > 0) p.weaponCooldowns[wKey]--;
     }
-    if (p.hp <= 0) continue;
-    // своя база — регенерация (1.5% maxHp в тик = ~75% за 5 сек у базы)
-    const myBase = world.bases.find(b => b.owner === p.team);
-    if (myBase) {
-      const dxB = p.x - myBase.x, dyB = p.y - myBase.y;
-      const dB = Math.hypot(dxB, dyB);
-      if (dB < 100) {
-        const regen = (p.maxHp || 100) * 0.015;  // быстрая регенерация у базы
-        p.hp = Math.min(p.maxHp, p.hp + regen);
-      }
-    }
+    if (p.hp <= 0) continue;     // респаун через 100 тиков
   }
 
-  // мобы: идут к вражеской базе, атакуют врагов в радиусе по дороге
+  // мобы: идут к вражеской базе или к ближайшему врагу
   for (const laneName of Object.keys(world.lanes)) {
     const mobs = world.lanes[laneName].mobs;
     for (let i = mobs.length - 1; i >= 0; i--) {
       const m = mobs[i];
-      // Найти врага в радиусе 220 (крипы реагируют на героев подальше)
-      let nearest = null, nearestDist = 220;
+      // найти врага в радиусе
+      let nearest = null, nearestDist = 200;
       for (const enemy of [...world.players.values(), ...mobs]) {
         if (enemy.team === m.team || enemy === m) continue;
         const d = Math.hypot(enemy.x - m.x, enemy.y - m.y);
         if (d < nearestDist) { nearest = enemy; nearestDist = d; }
       }
-      // выбрать цель: ближайший враг ИЛИ вражеская база
-      let goalX, goalY;
-      if (nearest) {
-        goalX = nearest.x; goalY = nearest.y;
-      } else {
-        // синие идут к красной базе (вверху), красные — к синей (внизу)
-        const enemyBase = world.bases.find(b => b.owner !== m.team);
-        goalX = enemyBase.x; goalY = enemyBase.y;
-      }
-      const dx = goalX - m.x;
-      const dy = goalY - m.y;
+      // цель
+      const goal = nearest || world.bases.find(b => b.owner !== m.team);
+      const dx = goal.x - m.x;
+      const dy = goal.y - m.y;
       const d = Math.hypot(dx, dy);
-      // идём только если не в радиусе атаки
       if (d > m.range) {
-        const stepX = (dx / d) * m.speed;
-        const stepY = (dy / d) * m.speed;
-        m.x += stepX;
-        m.y += stepY;
-      } else if (nearest) {
-        // в радиусе атаки — мелкий jitter чтобы не стоять колом
-        const jitter = (m.id % 7 - 3) * 0.05;
-        m.x += jitter;
+        m.x += (dx/d) * m.speed;
+        m.y += (dy/d) * m.speed;
       }
       // атака
-      if (d <= m.range && m.cooldown <= 0 && nearest) {
+      if (d <= m.range && m.cooldown <= 0) {
         m.cooldown = 30;
-        const dmgDealt = Math.max(1, m.dmg - (nearest.armor || 0));
-        nearest.hp -= dmgDealt;
+        const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
+        goal.hp -= dmgDealt;
         // респаун только для героев (у базы нет .hero)
-        if (nearest.hero && nearest.hp <= 0) {
-          const def = HERO_DEFS[nearest.hero];
-          nearest.hp = def.baseStats.hp;
+        if (goal.hero && goal.hp <= 0) {
+          const def = HERO_DEFS[goal.hero];
+          goal.hp = def.baseStats.hp;
           // респаун у синей базы (снизу)
-          nearest.x = MAP_W/2 + (Math.random()-0.5)*60;
-          nearest.y = MAP_H - 130;
+          goal.x = MAP_W/2 + (Math.random()-0.5)*60;
+          goal.y = MAP_H - 130;
         }
       }
       if (m.cooldown > 0) m.cooldown--;
@@ -353,21 +304,6 @@ function tick() {
             }
           }
         }
-        // ---- волновая логика: после смерти крипа → следующий вариант на его место ----
-        // счётчик живых этого варианта -- (что и так верно после splice)
-        const variant = m.variant || 'tank';
-        const cur = world.waveCounter[laneName][m.team][variant] || 0;
-        world.waveCounter[laneName][m.team][variant] = Math.max(0, cur - 1);
-        // следующий вариант: чередуем tank/range (0=tank, 1=range)
-        const v = world.nextVariant[laneName][m.team];
-        const nextVariantName = v === 0 ? 'tank' : 'range';
-        world.nextVariant[laneName][m.team] = 1 - v;
-        // спавним следующего крипа того же team, в том же lane
-        const newMob = spawnMob(laneName, m.team, nextVariantName);
-        mobs.push(newMob);
-        world.waveCounter[laneName][m.team][nextVariantName] =
-          (world.waveCounter[laneName][m.team][nextVariantName] || 0) + 1;
-        // удалить мёртвого
         mobs.splice(i, 1);
       }
     }
@@ -737,19 +673,10 @@ io.on('connection', (socket) => {
 });
 
 // ---------- Рассылка состояния ----------
-// Оптимизация: tick() считается всегда (для bots/mobs AI), но snapshot
-// рассылается ТОЛЬКО если есть подключённые игроки (Render Free душит CPU)
-let broadcastCount = 0;
 setInterval(() => {
   tick();
-  broadcastCount++;
-  const connectedPlayers = world.players.size;
-  if (connectedPlayers === 0) return;  // никого нет — сервер отдыхает
-  // snapshot создаём только если есть кому слать
   const snapshot = {
     tick: world.tick,
-    matchStartedAt: world.matchStartedAt,
-    elapsedMs: Date.now() - world.matchStartedAt,
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
@@ -762,7 +689,7 @@ setInterval(() => {
     mobs: [].concat(...Object.values(world.lanes).map(l => l.mobs)).map(m => ({
       id: m.id, x: m.x, y: m.y, hp: m.hp, maxHp: m.maxHp,
       color: m.color, shape: m.shape, lane: m.lane, team: m.team,
-      variant: m.variant,
+      tier: m.tier,
     })),
     bots: world.bots.filter(b => b.hp > 0).map(b => ({
       id: b.id, x: b.x, y: b.y, hp: b.hp, maxHp: b.maxHp,
@@ -777,12 +704,8 @@ setInterval(() => {
 }, TICK_MS);
 
 spawnInitialBots();
-seedInitialWave();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`MOBA proto on http://0.0.0.0:${PORT}`);
   console.log(`Spawned ${world.bots.length} bots`);
-  let totalMobs = 0;
-  for (const k of Object.keys(world.lanes)) totalMobs += world.lanes[k].mobs.length;
-  console.log(`Initial wave: ${totalMobs} mobs in 2 lanes (tank x${totalMobs}, range after first kill)`);
 });
