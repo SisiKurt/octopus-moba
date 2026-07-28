@@ -225,13 +225,17 @@ document.querySelectorAll('#hero-pick button').forEach(btn => {
   };
 });
 
-// ---------- джойстик ----------
+// ---------- джойстик: 8 направлений ----------
+// Направление (0-7): 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+// -1 = нейтраль (когда джойстик не активен)
+let joyDirection = -1;
 const knob = joystick.querySelector('.knob');
 function joyStart(e) {
   e.preventDefault();
   const t = e.touches ? e.touches[0] : e;
   joyActive = t.identifier ?? 'mouse';
   joyCenter = { x: joystick.offsetLeft + joystick.offsetWidth/2, y: joystick.offsetTop + joystick.offsetHeight/2 };
+  joyMove(e); // сразу установить направление если палец уже не в центре
 }
 function joyMove(e) {
   if (joyActive === null) return;
@@ -241,16 +245,37 @@ function joyMove(e) {
   const dy = t.clientY - joyCenter.y;
   const max = 40;
   const len = Math.hypot(dx, dy);
+  // knob визуально
   const cx = len > max ? (dx/len)*max : dx;
   const cy = len > max ? (dy/len)*max : dy;
   knob.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
-  inputKeys.up    = cy < -10;
-  inputKeys.down  = cy >  10;
-  inputKeys.left  = cx < -10;
-  inputKeys.right = cx >  10;
+  // если палец слишком близко к центру — считаем нейтралью
+  if (len < 10) {
+    joyDirection = -1;
+    inputKeys.up = inputKeys.down = inputKeys.left = inputKeys.right = false;
+    return;
+  }
+  // угол в радианах: 0 = вправо (восток), -π/2 = верх (север)
+  // мы хотим: N=0, NE=1, E=2, SE=3, S=4, SW=5, W=6, NW=7
+  // atan2(dy, dx): dy<0=вверх (на экране), dx=0=направо
+  const angle = Math.atan2(dy, dx); // в радианах, диапазон [-π, π]
+  // смещаем на 22.5° (π/8) чтобы деления 45° попадали в центры секторов
+  const shifted = angle + Math.PI / 8;
+  // normIdx: 0..7 (8 направлений по 45°)
+  let normIdx = Math.floor(shifted / (Math.PI / 4)) % 8;
+  if (normIdx < 0) normIdx += 8;
+  // смещаем чтобы N был 0 (atan2 даёт E=0)
+  // n8 = (normIdx + 8 - 2) % 8 потому что сектор [0) = E (+45) после смещения, сдвиг на -2 даёт N=0
+  joyDirection = (normIdx + 6) % 8;
+  // 4-bit fallback совместимость с inputKeys (для UI, не для движения)
+  inputKeys.up    = joyDirection === 0 || joyDirection === 1 || joyDirection === 7;
+  inputKeys.down  = joyDirection === 3 || joyDirection === 4 || joyDirection === 5;
+  inputKeys.left  = joyDirection === 5 || joyDirection === 6 || joyDirection === 7;
+  inputKeys.right = joyDirection === 1 || joyDirection === 2 || joyDirection === 3;
 }
 function joyEnd(e) {
   joyActive = null;
+  joyDirection = -1;
   knob.style.transform = 'translate(-50%, -50%)';
   inputKeys.up = inputKeys.down = inputKeys.left = inputKeys.right = false;
 }
@@ -275,10 +300,10 @@ function aimFromClient(cx, cy) {
 // ---------- отправка инпута (только при изменениях, throttle до 30fps) ----------
 let lastInputSent = '';
 function emitInput() {
-  const data = JSON.stringify({ keys: inputKeys, aim: { x: aimX, y: aimY } });
+  const data = JSON.stringify({ keys: inputKeys, direction: joyDirection, aim: { x: aimX, y: aimY } });
   if (data === lastInputSent) return;
   lastInputSent = data;
-  socket.emit('input', { keys: inputKeys, aim: { x: aimX, y: aimY } });
+  socket.emit('input', { keys: inputKeys, direction: joyDirection, aim: { x: aimX, y: aimY } });
 }
 setInterval(emitInput, 50);
 
