@@ -53,14 +53,14 @@
   /* скиллы — позиционируется из JS относительно канваса */
   #skills { position:absolute;
     display:flex; flex-direction:column; gap:8px; z-index:10; display:none; }
-  #skills button { width:54px; height:54px; background:#1d2742; color:#eee; border:1px solid #334; border-radius:6px; font-size:11px; position:relative; }
+  #skills button { width:44px; height:44px; background:#1d2742; color:#eee; border:1px solid #334; border-radius:6px; font-size:10px; position:relative; }
   #skills button .lvl { position:absolute; bottom:2px; right:4px; color:#ffd54a; }
 
   /* инвентарь — позиционируется из JS относительно канваса */
   #inventory { position:absolute;
     display:flex; flex-direction:column; gap:6px; z-index:10; display:none; }
-  #inventory .slot { width:54px; height:44px; background:#0e1424; color:#556;
-    border:1px dashed #334; border-radius:6px; font-size:11px;
+  #inventory .slot { width:44px; height:36px; background:#0e1424; color:#556;
+    border:1px dashed #334; border-radius:6px; font-size:10px;
     display:flex; align-items:center; justify-content:center; }
   #inventory .slot.filled { background:#1d2742; color:#eee; border-style:solid; border-color:#7ad7ff; }
 
@@ -238,12 +238,16 @@ function positionOverlays() {
   joystick.style.left = (r.left + 30) + 'px';
   joystick.style.bottom = '';
   joystick.style.top = (r.bottom - 150) + 'px';
-  // skills — слева по центру канваса
+  // skills — слева, вертикально по центру канваса (но не выходя за пределы канваса)
+  const skillsH = skillsDiv.offsetHeight || 304;
   skillsDiv.style.left = (r.left + 10) + 'px';
-  skillsDiv.style.top = (r.top + r.height / 2) + 'px';
-  // inventory — справа по центру канваса
-  inventoryDiv.style.left = (r.right - 64) + 'px';
-  inventoryDiv.style.top = (r.top + r.height / 2) + 'px';
+  skillsDiv.style.top = (r.top + r.height / 2 - skillsH / 2) + 'px';
+  skillsDiv.style.transform = '';
+  // inventory — справа, вертикально по центру канваса
+  const invH = inventoryDiv.offsetHeight || 246;
+  inventoryDiv.style.left = (r.right - 54) + 'px';
+  inventoryDiv.style.top = (r.top + r.height / 2 - invH / 2) + 'px';
+  inventoryDiv.style.transform = '';
 }
 window.addEventListener('resize', () => { resize(); positionOverlays(); });
 window.addEventListener('orientationchange', () => setTimeout(() => { resize(); positionOverlays(); }, 100));
