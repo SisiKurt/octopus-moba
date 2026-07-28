@@ -183,31 +183,41 @@ let aimX = 0, aimY = 0;
 let joyActive = null, joyCenter = null;
 let shopOpen = false;
 
-// ---------- resize canvas под экран (cover full screen, preserve logical 800x500 aspect) ----------
+// ---------- resize canvas под экран (contain: вся карта помещается, могут быть чёрные полосы) ----------
 const LOGICAL_W = 480;
 const LOGICAL_H = Math.round(LOGICAL_W * 16 / 9);  // 854 — мобильный портрет 9:16
 const ASPECT = LOGICAL_W / LOGICAL_H; // ~0.5625
 function resize() {
   cv.width = LOGICAL_W;
   cv.height = LOGICAL_H;
+  // Берём ПОЛЕЗНУЮ область — за вычетом UI (джойстик, инвентарь, shop)
+  // vh_safe = высота за вычетом системных баров и панелей
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const screenAspect = vw / vh;
+  // Ограничение сверху: оставим 60px для UI сверху (HP-бар)
+  // Ограничение снизу: оставим 200px для UI снизу (джойстик 120 + shop indicator 110)
+  const TOP_RESERVED = 60;
+  const BOTTOM_RESERVED = 200;
+  const vwSafe = Math.max(200, vw);
+  const vhSafe = Math.max(300, vh - TOP_RESERVED - BOTTOM_RESERVED);
+  // CONTAIN: вписать ВСЮ карту в vwSafe × vhSafe
   let cssW, cssH;
-  if (screenAspect > ASPECT) {
-    // шире — заполняем по высоте, центрируем
-    cssH = vh;
-    cssW = vh * ASPECT;
+  const safeAspect = vwSafe / vhSafe;
+  if (safeAspect > ASPECT) {
+    // безопасная область шире карты — ограничиваем по высоте
+    cssH = vhSafe;
+    cssW = cssH * ASPECT;
   } else {
-    // уже (телефон в портрете) — заполняем по ширине, центрируем
-    cssW = vw;
-    cssH = vw / ASPECT;
+    // безопасная область уже карты — ограничиваем по ширине
+    cssW = vwSafe;
+    cssH = cssW / ASPECT;
   }
   cv.style.width = cssW + 'px';
   cv.style.height = cssH + 'px';
   cv.style.position = 'absolute';
+  // центрируем по горизонтали; смещение по верху = TOP_RESERVED + запас
   cv.style.left = ((vw - cssW) / 2) + 'px';
-  cv.style.top = ((vh - cssH) / 2) + 'px';
+  cv.style.top = (TOP_RESERVED + (vhSafe - cssH) / 2) + 'px';
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 100));
