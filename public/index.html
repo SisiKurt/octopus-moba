@@ -264,9 +264,11 @@ function joyMove(e) {
   // normIdx: 0..7 (8 направлений по 45°)
   let normIdx = Math.floor(shifted / (Math.PI / 4)) % 8;
   if (normIdx < 0) normIdx += 8;
-  // смещаем чтобы N был 0 (atan2 даёт E=0)
-  // n8 = (normIdx + 8 - 2) % 8 потому что сектор [0) = E (+45) после смещения, сдвиг на -2 даёт N=0
-  joyDirection = (normIdx + 6) % 8;
+  // atan2(dy,dx): dx=0+dy<0 даёт -π/2 (север). Делим на 8 секторов по π/4 с центрами на 0, π/4, π/2...
+  // shifted = angle + π/8 смещает так, чтобы центр первого сектора был на E.
+  // Чтобы получить N=0 (сектор [-π/2 ± π/8]) — нужен сдвиг в индексах: normIdx для N = 6 (после +π/8 к -π/2),
+  // значит joyDirection = (6 + 2) % 8 = 0 → формула: (normIdx + 2) % 8
+  joyDirection = (normIdx + 2) % 8;
   // 4-bit fallback совместимость с inputKeys (для UI, не для движения)
   inputKeys.up    = joyDirection === 0 || joyDirection === 1 || joyDirection === 7;
   inputKeys.down  = joyDirection === 3 || joyDirection === 4 || joyDirection === 5;
