@@ -224,6 +224,9 @@ function spawnMob(laneName, team, kills = 0, variant = null) {
     cooldown: 0,
     lane: laneName,
     target: null,
+    // facing для морского конька (1=range) — куда он смотрит
+    // 0 = спавн-направление = к вражеской базе, red идут вниз (PI/2), blue вверх (-PI/2)
+    facing: team === 'blue' ? -Math.PI/2 : Math.PI/2,
   };
 }
 
@@ -307,12 +310,16 @@ function tick() {
         let ny = m.y + (dy/d) * m.speed;
         [nx, ny] = blockCentralWall(nx, ny, 8);
         m.x = nx; m.y = ny;
+        // facing: морские коньки смотрят в направлении движения (моб)
+        if (m.variant === 1) m.facing = Math.atan2(dy, dx);
       }
       // атака
       if (d <= m.range && m.cooldown <= 0) {
         m.cooldown = 30;
         const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
         goal.hp -= dmgDealt;
+        // facing морского конька — на цель при атаке
+        if (m.variant === 1) m.facing = Math.atan2(dy, dx);
         // респаун только героев (у базы нет .hero)
         if (goal.hero && goal.hp <= 0) {
           const def = HERO_DEFS[goal.hero];
@@ -837,7 +844,7 @@ setInterval(() => {
     mobs: [].concat(...Object.values(world.lanes).map(l => l.mobs)).map(m => ({
       id: m.id, x: m.x, y: m.y, hp: m.hp, maxHp: m.maxHp,
       color: m.color, shape: m.shape, lane: m.lane, team: m.team,
-      tier: m.tier,
+      tier: m.tier, variant: m.variant, size: m.size, facing: m.facing,
     })),
     bots: world.bots.filter(b => b.hp > 0).map(b => ({
       id: b.id, x: b.x, y: b.y, hp: b.hp, maxHp: b.maxHp,
