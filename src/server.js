@@ -713,21 +713,28 @@ io.on('connection', (socket) => {
 
   socket.on('input', (data) => {
     if (!player || player.hp <= 0) return;
-    // движение: клавиши или мобильный джойстик
-    if (data.keys) {
-      let dx = 0, dy = 0;
+    // движение: 8 направлений (если data.direction валидный) ИЛИ fallback на keys (4 направления)
+    let dx = 0, dy = 0;
+    if (Number.isInteger(data.direction) && data.direction >= 0 && data.direction < 8) {
+      // 8 направлений: 0=N (север, -y), 1=NE, 2=E (+x), 3=SE, 4=S (+y), 5=SW, 6=W (-x), 7=NW
+      // cos/sin: 0=вправо, увеличение по часовой стрелке (как atan2)
+      const angles = [-Math.PI/2, -Math.PI/4, 0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, -3*Math.PI/4];
+      const a = angles[data.direction];
+      dx = Math.cos(a);
+      dy = Math.sin(a);
+    } else if (data.keys) {
       if (data.keys.up)    dy -= 1;
       if (data.keys.down)  dy += 1;
       if (data.keys.left)  dx -= 1;
       if (data.keys.right) dx += 1;
-      const len = Math.hypot(dx, dy);
-      if (len > 0) {
-        let nx = player.x + (dx/len) * player.speed;
-        let ny = player.y + (dy/len) * player.speed;
-        [nx, ny] = blockCentralWall(nx, ny, 12);
-        player.x = Math.max(10, Math.min(MAP_W-10, nx));
-        player.y = Math.max(10, Math.min(MAP_H-10, ny));
-      }
+    }
+    const len = Math.hypot(dx, dy);
+    if (len > 0) {
+      let nx = player.x + (dx/len) * player.speed;
+      let ny = player.y + (dy/len) * player.speed;
+      [nx, ny] = blockCentralWall(nx, ny, 12);
+      player.x = Math.max(10, Math.min(MAP_W-10, nx));
+      player.y = Math.max(10, Math.min(MAP_H-10, ny));
     }
     if (data.aim) {
       player.targetAngle = Math.atan2(data.aim.y - player.y, data.aim.x - player.x);
