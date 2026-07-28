@@ -65,10 +65,9 @@ function createWorld() {
     // магазин — рядом с твоей базой (снизу по центру, чуть левее)
     shop: { x: MAP_W/2 - 120, y: MAP_H - 80 },
     lanes: {
-      // 3 вертикальных коридора (left / mid / right)
-      left:  { x: 160,           mobs: [] },
-      mid:   { x: MAP_W/2,       mobs: [] },
-      right: { x: MAP_W - 160,   mobs: [] },
+      // 2 вертикальных коридора (left / right), mid убран
+      left:  { x: MAP_W * 0.33, mobs: [] },
+      right: { x: MAP_W * 0.67, mobs: [] },
     },
     players: new Map(), // socket.id -> player
     bots: [],           // боты-осьминоги: [{id, ...player-like, state, ...}]
@@ -174,28 +173,38 @@ function recomputeStats(p) {
 }
 
 // ---------- Мобы ----------
-function spawnMob(laneName, team) {
-  // blue спавнятся у красной базы (сверху) и идут вниз к blue-базе
-  // red спавнятся у синей базы (снизу) и идут вверх к red-базе
+// Крип идёт по своему коридору от своей базы к вражеской, тип фиксирован при первом спавне (чередование tank/range)
+function spawnMob(laneName, team, kills = 0, variant = null) {
   const lane = world.lanes[laneName];
-  const spawnY = team === 'blue' ? 80 : MAP_H - 80;
-  // разброс силы: 0..2 (tier), влияет на hp/armor/dmg/speed
-  const tier = Math.floor(Math.random() * 3);  // 0=слабый, 1=средний, 2=сильный
-  const tierMult = [1, 1.8, 3.2][tier];
+  // red спавнятся у своей базы (сверху) и идут вниз к синей
+  // blue спавнятся у своей базы (снизу) и идут вверх к красной
+  const ownBaseY = team === 'blue' ? MAP_H - 80 : 80;
+  // тип: чередуем tank и range по умолчанию
+  if (variant === null) variant = kills % 2;  // 0 = tank, 1 = range
+  // base stats + +1% за каждое предыдущее убийство
+  const mult = 1 + kills * 0.01;
+  // tank и range базовые статы
+  const tankBase  = { hp: 60, armor: 2, dmg: 6,  range: 18, speed: 0.7, size: 10 };
+  const rangeBase = { hp: 24, armor: 0, dmg: 4,  range: 80, speed: 0.9, size: 8  };
+  const base = (variant === 1) ? rangeBase : tankBase;
+  // цвет по команде, тип рисуется обводкой (range - жёлтая)
+  const color = team === 'blue' ? '#3399ff' : '#ff5544';
   return {
     id: world.nextId++,
     team,
     shape: 'circle',
-    color: team === 'blue' ? '#3399ff' : '#ff5544',
-    tier,
-    x: lane.x + (Math.random()-0.5)*40,
-    y: spawnY + (team === 'blue' ? 30 : -30),
-    hp: 30 * tierMult,
-    maxHp: 30 * tierMult,
-    speed: 0.9 + tier * 0.15,
-    dmg: 3 + tier * 2,
-    range: 18,
-    armor: tier,                          // 0..2
+    color,
+    variant,                          // 0 = tank, 1 = range
+    kills,                            // сколько раз этот крип был убит (для +1% стат)
+    x: lane.x + (Math.random()-0.5)*30,
+    y: ownBaseY + (team === 'blue' ? -30 : 30),
+    hp: Math.round(base.hp * mult),
+    maxHp: Math.round(base.hp * mult),
+    armor: Math.round(base.armor * mult * 10) / 10,
+    dmg: Math.round(base.dmg * mult * 10) / 10,
+    range: base.range,
+    speed: base.speed,
+    size: base.size,
     cooldown: 0,
     lane: laneName,
     target: null,
@@ -227,11 +236,122 @@ const allMobs = () => Object.values(world.lanes).flatMap(l => l.mobs);
 function tick() {
   world.tick++;
 
-  // спавн мобов: раз в ~80 тиков в каждую линию
-  if (world.tick % 80 === 0) {
-    for (const laneName of Object.keys(world.lanes)) {
-      world.lanes[laneName].mobs.push(spawnMob(laneName, 'blue'));
-      world.lanes[laneName].mobs.push(spawnMob(laneName, 'red'));
+  // ---------- Мобы: AI и респаун ----------
+  // На каждую команду в каждом lane — ровно 1 крип. Если умер — респаун с +1% статами.
+  // Важно: сначала ищем умерших, удаляем, и в конце спавним новых (чтобы не было >1 моба в lane).
+  const mobsToRemove = []; // [{laneName, team, kills}]
+  for (const laneName of Object.keys(world.lanes)) {
+    const mobs = world.lanes[laneName].mobs;
+    for (let i = mobs.length - 1; i >= 0; i--) {
+      const m = mobs[i];
+
+      // ---------- AI: приоритеты ----------
+      // (1) вражеский крип (range tank) в своём lane в радиусе 220
+      // (2) вражеский герой / бот в радиусе 220
+      // (3) если ничего — идём к вражеской базе
+      let target = null;
+      let targetPriority = 0;
+      const SENSE_R = 220;
+
+      // (1) крип противника в этом lane или в любом lane (радиус 220)
+      for (const ln of Object.keys(world.lanes)) {
+        for (const om of world.lanes[ln].mobs) {
+          if (om === m || om.team === m.team) continue;
+          const d = Math.hypot(om.x - m.x, om.y - m.y);
+          if (d < SENSE_R) { target = om; targetPriority = 1; break; }
+        }
+        if (target) break;
+      }
+
+      // (2) если вражеского крипа нет — ближайший вражеский герой/бот (игрок + бот, оба противника)
+      if (!target) {
+        let nearestEnemy = null, nearestDist = SENSE_R;
+        // игроки
+        for (const p of world.players.values()) {
+          if (p.team === m.team) continue;
+          const d = Math.hypot(p.x - m.x, p.y - m.y);
+          if (d < nearestDist) { nearestEnemy = p; nearestDist = d; }
+        }
+        // боты (наши)
+        for (const b of world.bots) {
+          if (b.team === m.team || b.hp <= 0) continue;
+          const d = Math.hypot(b.x - m.x, b.y - m.y);
+          if (d < nearestDist) { nearestEnemy = b; nearestDist = d; }
+        }
+        if (nearestEnemy) { target = nearestEnemy; targetPriority = 2; }
+      }
+
+      // (3) если ничего нет рядом — идём к вражеской базе (по умолчанию)
+      const goal = target || world.bases.find(b => b.owner !== m.team);
+      const dx = goal.x - m.x;
+      const dy = goal.y - m.y;
+      const d = Math.hypot(dx, dy);
+      if (d > m.range) {
+        m.x += (dx/d) * m.speed;
+        m.y += (dy/d) * m.speed;
+      }
+      // атака
+      if (d <= m.range && m.cooldown <= 0) {
+        m.cooldown = 30;
+        const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
+        goal.hp -= dmgDealt;
+        // респаун только героев (у базы нет .hero)
+        if (goal.hero && goal.hp <= 0) {
+          const def = HERO_DEFS[goal.hero];
+          goal.hp = def.baseStats.hp;
+          goal.x = MAP_W/2 + (Math.random()-0.5)*60;
+          goal.y = MAP_H - 130;
+        }
+      }
+      if (m.cooldown > 0) m.cooldown--;
+
+      // моб умер → помечаем на респаун с kills+1 и удаляем
+      if (m.hp <= 0) {
+        const goldReward = 12, xpReward = 8;
+        for (const p of world.players.values()) {
+          if (p.team !== m.team) {
+            const dd = Math.hypot(p.x - m.x, p.y - m.y);
+            if (dd < 200) {
+              p.gold += goldReward;
+              p.xp  += xpReward;
+              if (p.xp >= p.xpNext) { p.xp -= p.xpNext; p.level++; p.xpNext = Math.floor(p.xpNext * 1.4); recomputeStats(p); }
+            }
+          }
+        }
+        for (const b of world.bots) {
+          if (b.team !== m.team && b.hp > 0) {
+            const dd = Math.hypot(b.x - m.x, b.y - m.y);
+            if (dd < 200) {
+              b.gold += goldReward;
+              b.xp  += xpReward;
+              if (b.xp >= b.xpNext) { b.xp -= b.xpNext; b.level++; b.xpNext = Math.floor(b.xpNext * 1.4); recomputeStats(b); }
+            }
+          }
+        }
+        // пометка на респаун: тот же lane, та же команда, kills+1
+        mobsToRemove.push({laneName, team: m.team, kills: m.kills + 1, variant: m.variant});
+        mobs.splice(i, 1);
+      }
+    }
+  }
+
+  // ---------- Респаун: 1 крип на (lane × team), variant чередуется по kills ----------
+  // Сначала гарантируем базовое наличие крипов (4 штуки: 2 lane × 2 команды)
+  for (const ln of Object.keys(world.lanes)) {
+    for (const t of ['blue', 'red']) {
+      const has = world.lanes[ln].mobs.some(m => m.team === t);
+      if (!has) {
+        // нет моба в (lane,team) — спавним
+        // если только что умер (kill+1), используем этот kills чтобы получить variant через % 2
+        const dead = mobsToRemove.find(r => r.laneName === ln && r.team === t);
+        if (dead) {
+          // уже умершего добавим ниже, тут просто placeholder чтобы был 1 крип
+          world.lanes[ln].mobs.push(spawnMob(ln, t, dead.kills, dead.kills % 2));
+        } else {
+          // стартовый крип (kills=0, variant=tank=0)
+          world.lanes[ln].mobs.push(spawnMob(ln, t, 0, 0));
+        }
+      }
     }
   }
 
