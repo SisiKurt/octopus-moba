@@ -73,6 +73,8 @@ function createWorld() {
     bots: [],           // боты-осьминоги: [{id, ...player-like, state, ...}]
     projectiles: [],
     nextId: 1,
+    // счётчик спавнов per (lane,team) — для прогрессии сложности крипов
+    spawnCounter: {},   // {"left:blue": 1, "left:red": 2, ...}
   };
 }
 
@@ -202,6 +204,7 @@ function recomputeStats(p) {
 
 // ---------- Мобы ----------
 // Крип идёт по своему коридору от своей базы к вражеской, тип фиксирован при первом спавне (чередование tank/range)
+// Прогрессия: каждый НОВЫЙ спавн = +1 к HP/armor/dmg (статичный рост со временем, не зависит от убийств)
 function spawnMob(laneName, team, kills = 0, variant = null) {
   const lane = world.lanes[laneName];
   // red спавнятся у своей базы (сверху) и идут вниз к синей
@@ -209,8 +212,14 @@ function spawnMob(laneName, team, kills = 0, variant = null) {
   const ownBaseY = team === 'blue' ? MAP_H - 80 : 80;
   // тип: чередуем tank и range по умолчанию
   if (variant === null) variant = kills % 2;  // 0 = tank, 1 = range
-  // base stats + +1% за каждое предыдущее убийство
-  const mult = 1 + kills * 0.01;
+  // прогрессия: +1 к базовым HP/armor/dmg за КАЖДЫЙ новый спавн (а не за убийства)
+  // используем world.spawnCounter[(lane,team)] который инкрементируется при КАЖДОМ спавне
+  const spawnKey = `${laneName}:${team}`;
+  world.spawnCounter[spawnKey] = (world.spawnCounter[spawnKey] || 0) + 1;
+  const spawnNum = world.spawnCounter[spawnKey];  // N-ый спавн на этом lane/team
+  const hpBonus = (spawnNum - 1);       // первый спавн = +0, второй = +1, ...
+  const armorBonus = Math.floor((spawnNum - 1) * 0.5);  // каждый 2-й = +1 armor
+  const dmgBonus = spawnNum - 1;        // +1 dmg каждый спавн
   // tank и range базовые статы
   const tankBase  = { hp: 60, armor: 2, dmg: 6,  range: 18, speed: 0.7, size: 10 };
   const rangeBase = { hp: 24, armor: 0, dmg: 4,  range: 80, speed: 0.9, size: 8  };
@@ -223,13 +232,13 @@ function spawnMob(laneName, team, kills = 0, variant = null) {
     shape: 'circle',
     color,
     variant,                          // 0 = tank, 1 = range
-    kills,                            // сколько раз этот крип был убит (для +1% стат)
+    spawnNum,                         // N-ый спавн (для UI)
     x: lane.x + (Math.random()-0.5)*30,
     y: ownBaseY + (team === 'blue' ? -30 : 30),
-    hp: Math.round(base.hp * mult),
-    maxHp: Math.round(base.hp * mult),
-    armor: Math.round(base.armor * mult * 10) / 10,
-    dmg: Math.round(base.dmg * mult * 10) / 10,
+    hp: base.hp + hpBonus,
+    maxHp: base.hp + hpBonus,
+    armor: base.armor + armorBonus,
+    dmg: base.dmg + dmgBonus,
     range: base.range,
     speed: base.speed,
     size: base.size,
@@ -863,7 +872,7 @@ setInterval(() => {
     mobs: [].concat(...Object.values(world.lanes).map(l => l.mobs)).map(m => ({
       id: m.id, x: m.x, y: m.y, hp: m.hp, maxHp: m.maxHp,
       color: m.color, shape: m.shape, lane: m.lane, team: m.team,
-      tier: m.tier, variant: m.variant, size: m.size, facing: m.facing,
+      tier: m.tier, variant: m.variant, size: m.size, facing: m.facing, spawnNum: m.spawnNum,
     })),
     bots: world.bots.filter(b => b.hp > 0).map(b => ({
       id: b.id, x: b.x, y: b.y, hp: b.hp, maxHp: b.maxHp,
