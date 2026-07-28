@@ -135,8 +135,9 @@ function hideWaking() {
   appReady = true;
   waking.style.opacity = '0';
   setTimeout(() => { waking.style.display = 'none'; }, 400);
-  if (pokeInterval) { clearInterval(pokeInterval); pokeInterval = null; }
-  if (wakeTimer) { clearTimeout(wakeTimer); wakeTimer = null; }
+  // safety: pokeInterval/wakeTimer объявлены ниже в другом <script>; try/catch
+  try { if (typeof pokeInterval !== 'undefined' && pokeInterval) { clearInterval(pokeInterval); pokeInterval = null; } } catch(e) {}
+  try { if (typeof wakeTimer !== 'undefined' && wakeTimer) { clearTimeout(wakeTimer); wakeTimer = null; } } catch(e) {}
 }
 window.addEventListener('appready', hideWaking);
 
