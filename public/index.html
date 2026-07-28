@@ -342,15 +342,23 @@ function aimFromClient(cx, cy) {
   aimY = (cy - r.top)  * scaleY;
 }
 
-// ---------- отправка инпута (только при изменениях, throttle до 30fps) ----------
-let lastInputSent = '';
+// ---------- отправка инпута ----------
+// direction/aim всегда отправляем (пока палец на джойстике направление должно давить героя каждый тик)
+// keys (WASD/стрелки) отправляем только если изменились — для экономии
+let lastKeysSent = '';
 function emitInput() {
-  const data = JSON.stringify({ keys: inputKeys, direction: joyDirection, aim: { x: aimX, y: aimY } });
-  if (data === lastInputSent) return;
-  lastInputSent = data;
-  socket.emit('input', { keys: inputKeys, direction: joyDirection, aim: { x: aimX, y: aimY } });
+  // keys: throttle
+  const keysStr = JSON.stringify(inputKeys);
+  const keysChanged = keysStr !== lastKeysSent;
+  if (keysChanged) lastKeysSent = keysStr;
+  // direction/aim: всегда, пока игрок активен
+  socket.emit('input', {
+    keys: keysChanged ? inputKeys : null,        // null = без изменений
+    direction: joyDirection,
+    aim: { x: aimX, y: aimY },
+  });
 }
-setInterval(emitInput, 50);
+setInterval(emitInput, 50);   // 20 Hz — гарантирует постоянное движение
 
 // ---------- сеть ----------
 const connStatus = document.getElementById('conn-status');
