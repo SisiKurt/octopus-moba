@@ -72,6 +72,8 @@
 <div id="screen">
   <canvas id="cv" width="500" height="800"></canvas>
 
+  <div id="timer" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#7ad7ff;padding:4px 12px;border-radius:14px;font-family:monospace;font-size:14px;z-index:20;font-weight:bold;letter-spacing:1px;">⏱ 00:00</div>
+
   <div id="hud">
     <div class="row">
       <span class="lvl" id="lvl">Lv 1</span>
@@ -79,6 +81,8 @@
       <span class="gold" id="gold">0$</span>
     </div>
   </div>
+
+  <div id="heal-indicator" style="position:absolute;top:34px;left:50%;transform:translateX(-50%);background:rgba(34,222,102,.85);color:#000;padding:2px 8px;border-radius:10px;font-size:10px;display:none;z-index:20;font-weight:bold;">+ HP</div>
 
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
@@ -271,10 +275,28 @@ socket.on('init', data => {
   renderInventory();
 });
 
+const timerEl = document.getElementById('timer');
+const healIndicator = document.getElementById('heal-indicator');
+
 socket.on('state', state => {
   lastState = state;
   draw(state);
   if (me) updateHud(state);
+  // таймер дуэли (наверху)
+  if (state.elapsedMs != null) {
+    const sec = Math.floor(state.elapsedMs / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    timerEl.textContent = `⏱ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+  // индикатор "у базы лечит" — видно когда me рядом со своей базой
+  if (me && state.bases) {
+    const myBase = state.bases.find(b => b.owner === me.team);
+    if (myBase) {
+      const d = Math.hypot(me.x - myBase.x, me.y - myBase.y);
+      healIndicator.style.display = (d < 100 && me.hp < me.maxHp) ? 'block' : 'none';
+    }
+  }
   // первый state = точно всё работает. Спрятать waking
   if (!appReady) window.dispatchEvent(new Event('appready'));
 });

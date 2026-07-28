@@ -44,7 +44,8 @@ const HERO_DEFS = {
     baseStats: { hp: 110, hpReg: 1.5, speed: 3.2, armor: 1 },
     passivePerLevel: { hp: 6, dmg: 1.5, speed: 0.15 } },
   tank: { name: 'Танк', color: '#4488ff', shape: 'square',
-    baseStats: { hp: 200, hpReg: 1.0, speed: 2.4, armor: 5 },
+    // speed x 1.25 от базы для большей мобильности
+    baseStats: { hp: 200, hpReg: 1.0, speed: 2.4 * 1.25, armor: 5 },
     passivePerLevel: { hp: 18, armor: 1.2 } },
   miner: { name: 'Минёр', color: '#cc44ff', shape: 'square',
     baseStats: { hp: 95, hpReg: 1.2, speed: 2.8, armor: 1 },
@@ -57,10 +58,12 @@ function createWorld() {
     tick: 0,
     mapW: MAP_W,
     mapH: MAP_H,
+    matchStartedAt: Date.now(),  // старт таймера дуэли
+    // базы — обе по центру карты (по X), синяя внизу, красная сверху
+    // стены вокруг каждой — tank-friendly локация (лечит героев рядом)
     bases: [
-      // blue (твоя) — снизу по центру, красная — сверху
-      { id: 'blue',  x: MAP_W/2, y: MAP_H-80, hp: 500, maxHp: 500, owner: 'blue'  },
-      { id: 'red',   x: MAP_W/2, y: 80,      hp: 500, maxHp: 500, owner: 'red' },
+      { id: 'blue',  x: MAP_W/2, y: MAP_H-60, hp: 500, maxHp: 500, owner: 'blue'  },
+      { id: 'red',   x: MAP_W/2, y: 60,      hp: 500, maxHp: 500, owner: 'red' },
     ],
     // магазин — рядом с твоей базой (снизу по центру, чуть левее)
     shop: { x: MAP_W/2 - 120, y: MAP_H - 80 },
@@ -257,12 +260,22 @@ function tick() {
   // мобы: спавнятся ТОЛЬКО на смерть предыдущего (см. секцию ниже)
   // (раньше был spawn по таймеру — убран, чтобы карта была стабильной: 2 lane × 2 team = 4 живых)
 
-  // игроки: тикаем кулдауны каждого ствола в инвентаре
+  // игроки: тикаем кулдауны стволов + регенерация HP у своей базы
   for (const p of world.players.values()) {
     for (const wKey of Object.keys(p.weaponCooldowns)) {
       if (p.weaponCooldowns[wKey] > 0) p.weaponCooldowns[wKey]--;
     }
-    if (p.hp <= 0) continue;     // респаун через 100 тиков
+    if (p.hp <= 0) continue;
+    // своя база — регенерация (1.5% maxHp в тик = ~75% за 5 сек у базы)
+    const myBase = world.bases.find(b => b.owner === p.team);
+    if (myBase) {
+      const dxB = p.x - myBase.x, dyB = p.y - myBase.y;
+      const dB = Math.hypot(dxB, dyB);
+      if (dB < 100) {
+        const regen = (p.maxHp || 100) * 0.015;  // быстрая регенерация у базы
+        p.hp = Math.min(p.maxHp, p.hp + regen);
+      }
+    }
   }
 
   // мобы: идут к вражеской базе, атакуют врагов в радиусе по дороге
@@ -728,6 +741,8 @@ setInterval(() => {
   tick();
   const snapshot = {
     tick: world.tick,
+    matchStartedAt: world.matchStartedAt,
+    elapsedMs: Date.now() - world.matchStartedAt,
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
@@ -740,7 +755,7 @@ setInterval(() => {
     mobs: [].concat(...Object.values(world.lanes).map(l => l.mobs)).map(m => ({
       id: m.id, x: m.x, y: m.y, hp: m.hp, maxHp: m.maxHp,
       color: m.color, shape: m.shape, lane: m.lane, team: m.team,
-      tier: m.tier,
+      variant: m.variant,
     })),
     bots: world.bots.filter(b => b.hp > 0).map(b => ({
       id: b.id, x: b.x, y: b.y, hp: b.hp, maxHp: b.maxHp,
