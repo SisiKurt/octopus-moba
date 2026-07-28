@@ -129,16 +129,17 @@ const wakingRetry = document.getElementById('waking-retry');
 
 // Показать waking сразу
 waking.style.display = 'flex';
-let appReady = false;
+window.appReady = false;
 function hideWaking() {
-  if (appReady) return;
-  appReady = true;
+  if (window.appReady) return;
+  window.appReady = true;
   waking.style.opacity = '0';
   setTimeout(() => { waking.style.display = 'none'; }, 400);
   // safety: pokeInterval/wakeTimer объявлены ниже в другом <script>; try/catch
   try { if (typeof pokeInterval !== 'undefined' && pokeInterval) { clearInterval(pokeInterval); pokeInterval = null; } } catch(e) {}
   try { if (typeof wakeTimer !== 'undefined' && wakeTimer) { clearTimeout(wakeTimer); wakeTimer = null; } } catch(e) {}
 }
+window.hideWaking = hideWaking;
 window.addEventListener('appready', hideWaking);
 
 // safety net: спрятать overlay через 8 сек в любом случае (даже если state не пришёл)
@@ -266,13 +267,13 @@ socket.on('connect_error', e => setStatus('❌ ' + (e.message||e), false));
 socket.on('disconnect', r => setStatus('⚠️ disconnected: ' + r, false));
 
 // Если Render Free cold start > 8 сек — показать что ждём
-let wakeTimer = setTimeout(() => { if (!appReady) wakingRetry.textContent = 'Render cold start... ждём socket'; }, 8000);
+let wakeTimer = setTimeout(() => { if (!window.appReady) wakingRetry.textContent = 'Render cold start... ждём socket';}, 8000);
 
 // polling fallback: каждые 3 сек пробуем fetch вручную — разбудить Render
 async function pokeServer() {
   try {
     const r = await fetch('/?poke=' + Date.now(), { cache: 'no-store' });
-    if (r.ok && !appReady) {
+    if (r.ok && !window.appReady) {
       wakingRetry.textContent = 'Сервер ответил — подключаем socket…';
     }
   } catch (e) {}
@@ -319,7 +320,7 @@ socket.on('state', state => {
     }
   }
   // первый state = точно всё работает. Спрятать waking
-  if (!appReady) window.dispatchEvent(new Event('appready'));
+  if (!window.appReady) window.dispatchEvent(new Event('appready'));
 });
 
 // ---------- UI ----------
