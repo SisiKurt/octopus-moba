@@ -483,6 +483,91 @@ function tick() {
     if (b.hp <= 0) b.hp = 0;
   }
 
+  // ---------- Базы: лечение союзников + атака врагов ----------
+  // Радиус = максимальный range крипа (range_mob = 80 у морского конька, 18 у медузы).
+  // Берём 80 — оба типа крипов в зоне.
+  // Лечение: 1% от maxHp в секунду для каждого союзника в радиусе.
+  // Атака: pistol-урон (8 dmg), без мерж-модификатора, без лимита целей, cooldown 20 тиков (1 сек).
+  const BASE_RANGE = 80;
+  const BASE_DMG = 8;
+  const BASE_HEAL_PCT = 0.01;       // 1% от maxHp в секунду
+  const BASE_ATTACK_CD = 20;        // 1 sec (50ms × 20)
+  for (const base of world.bases) {
+    if (base.hp <= 0) continue;
+    // Инициализация поля cooldown для базы (один раз на base.id)
+    if (base.attackCd === undefined) base.attackCd = 0;
+
+    // 1) ЛЕЧЕНИЕ: каждый тик прибавляем 0.01/20 = 0.0005×maxHp (чтобы за секунду набежало 1%)
+    // Каждые 50 ms набиваем 0.0005 × maxHp союзникам в радиусе
+    const healPerTick = BASE_HEAL_PCT / BASE_ATTACK_CD;  // 0.0005
+
+    // герои (живые люди)
+    for (const p of world.players.values()) {
+      if (p.team !== base.owner || p.hp <= 0 || p.hp >= p.maxHp) continue;
+      const dist = Math.hypot(p.x - base.x, p.y - base.y);
+      if (dist <= BASE_RANGE) {
+        p.hp = Math.min(p.maxHp, p.hp + healPerTick * p.maxHp);
+      }
+    }
+    // боты-союзники
+    for (const bot of world.bots) {
+      if (bot.team !== base.owner || bot.hp <= 0 || bot.hp >= bot.maxHp) continue;
+      const dist = Math.hypot(bot.x - base.x, bot.y - base.y);
+      if (dist <= BASE_RANGE) {
+        bot.hp = Math.min(bot.maxHp, bot.hp + healPerTick * bot.maxHp);
+      }
+    }
+    // крипы-союзники
+    for (const ln of Object.keys(world.lanes)) {
+      for (const m of world.lanes[ln].mobs) {
+        if (m.team !== base.owner || m.hp >= m.maxHp) continue;
+        const dist = Math.hypot(m.x - base.x, m.y - base.y);
+        if (dist <= BASE_RANGE) {
+          m.hp = Math.min(m.maxHp, m.hp + healPerTick * m.maxHp);
+        }
+      }
+    }
+
+    // 2) АТАКА: каждый cooldown tick — стреляем по ВСЕМ врагам в радиусе
+    if (base.attackCd > 0) { base.attackCd--; continue; }
+    base.attackCd = BASE_ATTACK_CD;
+
+    // собираем список всех живых врагов в радиусе (без лимита)
+    const enemies = [];
+    for (const p of world.players.values()) {
+      if (p.team === base.owner || p.hp <= 0) continue;
+      const d = Math.hypot(p.x - base.x, p.y - base.y);
+      if (d <= BASE_RANGE) enemies.push({ x: p.x, y: p.y, target: p, range: d });
+    }
+    for (const bot of world.bots) {
+      if (bot.team === base.owner || bot.hp <= 0) continue;
+      const d = Math.hypot(bot.x - base.x, bot.y - base.y);
+      if (d <= BASE_RANGE) enemies.push({ x: bot.x, y: bot.y, target: bot, range: d });
+    }
+    for (const ln of Object.keys(world.lanes)) {
+      for (const m of world.lanes[ln].mobs) {
+        if (m.team === base.owner || m.hp <= 0) continue;
+        const d = Math.hypot(m.x - base.x, m.y - base.y);
+        if (d <= BASE_RANGE) enemies.push({ x: m.x, y: m.y, target: m, range: d });
+      }
+    }
+
+    // стреляем в каждого по очереди (без лимита)
+    for (const e of enemies) {
+      const ang = Math.atan2(e.y - base.y, e.x - base.x);
+      world.projectiles.push({
+        id: world.nextId++,
+        ownerId: 'base-' + base.id,
+        x: base.x, y: base.y,
+        vx: Math.cos(ang) * 8, vy: Math.sin(ang) * 8,  // projSpeed как у pistol
+        dmg: BASE_DMG,
+        range: BASE_RANGE,
+        traveled: 0,
+        isCannon: false,
+      });
+    }
+  }
+
   // ---------- Боты: AI ----------
   for (const bot of world.bots) {
     if (bot.hp <= 0) continue;
@@ -578,12 +663,30 @@ function tick() {
         bot.targetY = nearestEnemyMob.y;
         bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
       } else {
-        // идём к вражеской базе — добавляем jitter чтобы крипы не слипались
-        const jitter = (Math.random()-0.5) * 60;
-        bot.targetX = enemyBase.x + jitter;
+        // идём в своём коридоре (left/right), чтобы не упираться в центральную стену.
+        // 50% ботов идут в левом коридоре, 50% в правом — на основе id чётности.
+        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+        const laneX = world.lanes[lane].x;
+        bot.targetX = laneX + (Math.random()-0.5) * 30;
         bot.targetY = enemyBase.y + (bot.team === 'blue' ? -50 : 50);
         bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
       }
+    }
+
+    // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
+    if (bot.state === 'FARM' && Math.hypot(bot.x - bot.spawnX || bot.x, bot.y - bot.spawnY || bot.y) < 5) {
+      bot.stuckTicks = (bot.stuckTicks || 0) + 1;
+      if (bot.stuckTicks > 20) {  // 1 секунда застряли (50ms ticks)
+        // force push away from own base
+        const myBase = world.bases.find(b => b.owner === bot.team);
+        const ang = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);  // away from base
+        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+        bot.targetX = world.lanes[lane].x;
+        bot.targetY = bot.y + Math.cos(ang) * 200 * (bot.team === 'red' ? 1 : -1);
+        bot.stuckTicks = 0;
+      }
+    } else {
+      bot.stuckTicks = 0;
     }
 
     // ---- MOVEMENT (с учётом стены по центру) ----
@@ -646,18 +749,37 @@ function tick() {
     }
     // попадание
     let hit = null;
+    // определяем team owner'а снаряда (м.б. 'base-blue', 'base-red', либо id плеера/бота)
+    let ownerTeam = null;
+    if (typeof pr.ownerId === 'string' && pr.ownerId.startsWith('base-')) {
+      ownerTeam = pr.ownerId.slice(5);  // 'base-blue' -> 'blue'
+    } else if (pr.ownerId && pr.ownerId.startsWith && false) {}  // unused
+    else {
+      // ищем среди players и bots по id
+      const pp = [...world.players.values()].find(x => x.id === pr.ownerId);
+      if (pp) ownerTeam = pp.team;
+      else {
+        const bb = world.bots.find(x => x.id === pr.ownerId);
+        if (bb) ownerTeam = bb.team;
+      }
+    }
+    const isEnemy = (e) => ownerTeam && e.team && e.team !== ownerTeam;
+
     for (const m of allMobs()) {
+      if (ownerTeam && !isEnemy(m)) continue;
       if (Math.hypot(m.x - pr.x, m.y - pr.y) < 10) { hit = m; break; }
     }
     if (!hit) {
       for (const p of world.players.values()) {
-        if (p.id !== pr.ownerId && Math.hypot(p.x - pr.x, p.y - pr.y) < 10) { hit = p; break; }
+        if (ownerTeam && !isEnemy(p)) continue;
+        if (Math.hypot(p.x - pr.x, p.y - pr.y) < 10) { hit = p; break; }
       }
     }
-    // проверяем попадание в ботов своей команды (или любой команды)
+    // проверяем попадание в ботов противника
     if (!hit) {
       for (const b of world.bots) {
-        if (b.id !== pr.ownerId && b.hp > 0 && Math.hypot(b.x - pr.x, b.y - pr.y) < 10) { hit = b; break; }
+        if (ownerTeam && !isEnemy(b)) continue;
+        if (b.hp > 0 && Math.hypot(b.x - pr.x, b.y - pr.y) < 10) { hit = b; break; }
       }
     }
     if (hit) {
@@ -873,7 +995,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.6.0-autoaim+8creeps+bots',
+    matchVersion: 'v0.7.0-autoaim+8creeps+bots',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
