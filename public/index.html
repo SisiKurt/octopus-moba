@@ -73,11 +73,11 @@
   /* магазин — горизонтальный ряд квадратиков внизу канваса
      квадратики по нижнему краю, ряд в 1 строку, джойстик НАД ними */
   #shop { position:absolute; left:50%; transform:translateX(-50%);
-    display:flex; flex-direction:row; flex-wrap:wrap; gap:6px; align-items:flex-end;
-    justify-content:center; z-index:10; display:none; max-width:96%;
-    padding-bottom:4px; }
+    display:flex; flex-direction:row; flex-wrap:nowrap; gap:4px; align-items:flex-end;
+    justify-content:center; z-index:10; display:none; max-width:100%;
+    padding-bottom:4px; white-space:nowrap; overflow-x:auto; }
   #shop button {
-    width:52px; height:52px; padding:0;
+    width:48px; height:48px; padding:0;
     background:#1d2742; color:#eee; border:2px solid #556; border-radius:8px;
     font-size:9px; line-height:1.1; text-align:center;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -529,17 +529,16 @@ function updateHud(state) {
 
   // инвентарь: 6 слотов. Внутри иконка оружия + счётчик купленных копий (если > 1)
   const slots = [...inventoryDiv.querySelectorAll('.slot')];
-  // подсчёт дублей для мерж-хинта
-  const counts = {};
-  for (const w of inv) counts[w] = (counts[w] || 0) + 1;
-  const hasMerge = Object.values(counts).some(c => c >= 2);
+  // подсчёт копий для мерж-хинта: смотрим в weaponMerge (>=2 = мерж)
+  const hasMerge = Object.values(p.weaponMerge || {}).some(c => c >= 2);
   mergeHint.style.display = hasMerge ? 'block' : 'none';
 
   slots.forEach((s, i) => {
     if (i < inv.length) {
       s.classList.add('filled');
       const wpnKey = inv[i];
-      const cnt = counts[wpnKey] || 1;
+      // cnt = количество купленных копий (из weaponMerge, не из дублей inventory)
+      const cnt = (p.weaponMerge && p.weaponMerge[wpnKey]) || 1;
       const wInfo = weapons[wpnKey];
       const ico = WEAPON_ICONS[wpnKey] || '⚔';
       // иконка оружия (крупно) + название (мелко) + счётчик в углу (если >1)

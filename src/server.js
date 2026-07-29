@@ -75,7 +75,7 @@ function createWorld() {
     nextId: 1,
     // счётчик спавнов per (lane,team) — для прогрессии сложности крипов
     spawnCounter: {},   // {"left:blue": 1, "left:red": 2, ...}
-    matchStartTime: Date.now(),  // для таймера матча
+    matchStartTime: null,  // для таймера матча; устанавливается когда первый игрок зайдёт
   };
 }
 
@@ -382,21 +382,23 @@ function tick() {
     }
   }
 
-  // ---------- Респаун: 1 крип на (lane × team), variant чередуется по kills ----------
-  // Сначала гарантируем базовое наличие крипов (4 штуки: 2 lane × 2 команды)
+  // ---------- Респаун: 2 крипа на (lane × team): tank + range ----------
+  // Каждый lane держит по 2 крипа каждой команды (медуза-танк + морской конёк-range).
+  // Всего: 2 lane × 2 команды × 2 крипа = 8 крипов на карте.
   for (const ln of Object.keys(world.lanes)) {
     for (const t of ['blue', 'red']) {
-      const has = world.lanes[ln].mobs.some(m => m.team === t);
-      if (!has) {
-        // нет моба в (lane,team) — спавним
-        // если только что умер (kill+1), используем этот kills чтобы получить variant через % 2
-        const dead = mobsToRemove.find(r => r.laneName === ln && r.team === t);
-        if (dead) {
-          // уже умершего добавим ниже, тут просто placeholder чтобы был 1 крип
-          world.lanes[ln].mobs.push(spawnMob(ln, t, dead.kills, dead.kills % 2));
-        } else {
-          // стартовый крип (kills=0, variant=tank=0)
-          world.lanes[ln].mobs.push(spawnMob(ln, t, 0, 0));
+      // вариант 0 (tank), затем вариант 1 (range)
+      for (const variant of [0, 1]) {
+        const has = world.lanes[ln].mobs.some(m => m.team === t && m.variant === variant);
+        if (!has) {
+          // fresh kills for each variant slot, чтобы прогрессия считала по (lane,team,variant)
+          const dead = mobsToRemove.find(r => r.laneName === ln && r.team === t && r.variant === variant);
+          if (dead) {
+            world.lanes[ln].mobs.push(spawnMob(ln, t, dead.kills, variant));
+          } else {
+            // первый спавн = +0 прогрессии
+            world.lanes[ln].mobs.push(spawnMob(ln, t, 0, variant));
+          }
         }
       }
     }
@@ -568,17 +570,18 @@ function tick() {
       bot.targetX = bot.x;
       bot.targetY = bot.y;
     } else {
-      // FARM: идём к ближайшему чужому мобу / к вражеской стороне
+      // FARM: цель №1 — вражеская база. Убиваем мобов на пути (приоритет выше базы).
       bot.state = 'FARM';
-      if (nearestEnemyMob) {
+      const enemyBase = world.bases.find(b => b.owner !== bot.team);
+      if (nearestEnemyMob && nearestEnemyMobDist < 200) {
         bot.targetX = nearestEnemyMob.x;
         bot.targetY = nearestEnemyMob.y;
         bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
       } else {
-        // идём к центру/к вражеской стороне
-        const enemyBase = world.bases.find(b => b.owner !== bot.team);
-        bot.targetX = enemyBase.x + (Math.random()-0.5)*100;
-        bot.targetY = enemyBase.y + 200;
+        // идём к вражеской базе — добавляем jitter чтобы крипы не слипались
+        const jitter = (Math.random()-0.5) * 60;
+        bot.targetX = enemyBase.x + jitter;
+        bot.targetY = enemyBase.y + (bot.team === 'blue' ? -50 : 50);
         bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
       }
     }
@@ -613,10 +616,11 @@ function tick() {
       const baseDmg = pelletDmg * dmgMul;
       for (const tgt of targetsList) {
         for (let p2 = 0; p2 < pellets; p2++) {
+          // бот: авто-прицел в цель
           let ang;
           if (wpn.pellets) {
-            const spread = (p2 - (wpn.pellets-1)/2) * 0.15;
-            ang = bot.targetAngle + spread;
+            const spread = (p2 - (wpn.pellets-1)/2) * 0.18;
+            ang = Math.atan2(tgt.y - bot.y, tgt.x - bot.x) + spread;
           } else {
             ang = Math.atan2(tgt.y - bot.y, tgt.x - bot.x);
           }
@@ -705,25 +709,32 @@ function pickTargets(player, range, count) {
   const primary = focusMobs ? mobsInRange : heroesInRange;
   const secondary = focusMobs ? heroesInRange : mobsInRange;
 
-  // выбираем count случайных целей из разных категорий (Phoenix Fire: случайный, не ближайший)
+  // 75% пуль в primary (фокус), 25% в secondary.
+  // Если primary пуст — все пули в secondary случайно.
+  // Пример: 2 пистолета + 1 крип = обе пули в этого крипа (по кругу).
   const result = [];
-  // перемешаем primary
-  for (let i = primary.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [primary[i], primary[j]] = [primary[j], primary[i]];
+  for (const arr of [primary, secondary]) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
   }
-  for (const t of primary) {
-    if (result.length >= count) break;
-    result.push(t);
+  if (primary.length === 0) {
+    for (let i = 0; i < count; i++) {
+      result.push(secondary[Math.floor(Math.random() * secondary.length)]);
+    }
+    return result;
   }
-  // если primary не хватило, добираем из secondary
-  for (let i = secondary.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [secondary[i], secondary[j]] = [secondary[j], secondary[i]];
+  const focusCount = Math.round(count * 0.75);
+  const restCount  = count - focusCount;
+  for (let i = 0; i < focusCount; i++) {
+    result.push(primary[i % primary.length]);
   }
-  for (const t of secondary) {
-    if (result.length >= count) break;
-    result.push(t);
+  for (let i = 0; i < restCount && secondary.length > 0; i++) {
+    result.push(secondary[Math.floor(Math.random() * secondary.length)]);
+  }
+  while (result.length < count) {
+    result.push(primary[Math.floor(Math.random() * primary.length)]);
   }
   return result;
 }
@@ -737,6 +748,7 @@ io.on('connection', (socket) => {
     player = newPlayer(socket.id, hero);
     recomputeStats(player);
     world.players.set(socket.id, player);
+    if (!world.matchStartTime) world.matchStartTime = Date.now();  // первый игрок => таймер с 0
     socket.emit('init', { id: player.id, weapons: WEAPONS, heroes: HERO_DEFS, mapW: MAP_W, mapH: MAP_H });
   });
 
@@ -765,9 +777,7 @@ io.on('connection', (socket) => {
       player.x = Math.max(10, Math.min(MAP_W-10, nx));
       player.y = Math.max(10, Math.min(MAP_H-10, ny));
     }
-    if (data.aim) {
-      player.targetAngle = Math.atan2(data.aim.y - player.y, data.aim.x - player.x);
-    }
+    // прицеливание отключено: авто-атака по pickTargets, targetAngle больше не меняется
     // авто-атака: каждый ствол в инвентаре стреляет независимо по своей случайной цели в своём радиусе
     for (const wKey of player.inventory) {
       const wpn = WEAPONS[wKey];
@@ -792,11 +802,12 @@ io.on('connection', (socket) => {
 
       const fireAt = (tgt) => {
         for (let p2 = 0; p2 < pellets; p2++) {
-          // для дробовика — разлёт, для остальных — точно в цель
+          // авто-прицел: все стволы бьют в сторону выбранной цели
+          // (дробовик — несколько снарядов в сторону цели с разбросом)
           let ang;
           if (wpn.pellets) {
-            const spread = (p2 - (wpn.pellets-1)/2) * 0.15;
-            ang = player.targetAngle + spread;
+            const spread = (p2 - (wpn.pellets-1)/2) * 0.18;
+            ang = Math.atan2(tgt.y - player.y, tgt.x - player.x) + spread;
           } else {
             ang = Math.atan2(tgt.y - player.y, tgt.x - player.x);
           }
@@ -861,7 +872,7 @@ setInterval(() => {
   tick();
   const snapshot = {
     tick: world.tick,
-    elapsedMs: Date.now() - world.matchStartTime,
+    elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
     matchVersion: 'v0.5.0-mobs+merge+timer',
     bases: world.bases,
     shop: world.shop,
