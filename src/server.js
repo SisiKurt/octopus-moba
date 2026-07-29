@@ -156,7 +156,7 @@ function newBot(heroKey, team) {
     x: pickLaneX(),
     y: team === 'red' ? 100 : MAP_H - 130,
     hp: def.baseStats.hp, maxHp: def.baseStats.hp,
-    speed: def.baseStats.speed * 0.85,  // бот чуть медленнее
+    speed: def.baseStats.speed * 1.35,  // бот быстрее игрока (агрессивное давление)
     armor: def.baseStats.armor,
     dmgBonus: 0,
     gold: 30,
@@ -605,8 +605,8 @@ function tick() {
     if (hpPct < 0.3) bot.state = 'RETREAT';
     else if (bot.state === 'RETREAT' && hpPct > 0.6) bot.state = 'FARM';
 
-    // FIGHT: враг в радиусе 200
-    if (bot.state !== 'RETREAT' && nearestEnemy && nearestDist < 200) {
+    // FIGHT: враг в радиусе 250 — всегда враждебное давление когда видим
+    if (bot.state !== 'RETREAT' && nearestEnemy && nearestDist < 250) {
       bot.state = 'FIGHT';
     }
 
@@ -626,18 +626,18 @@ function tick() {
     } else if (bot.state === 'FIGHT') {
       // целимся во врага
       bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      // давление на врага: идём к нему, но не вплотную (держим дистанцию 30-35)
-      if (nearestDist > 35) {
-        // наступаем — медленно сокращаем дистанцию
+      // давление на врага: идём к нему, держа дистанцию ~35px (агрессивное наступление)
+      if (nearestDist > 45) {
+        // наступаем — быстро сокращаем дистанцию
         bot.targetX = nearestEnemy.x;
         bot.targetY = nearestEnemy.y;
-      } else if (nearestDist < 25) {
-        // слишком близко — отходим
+      } else if (nearestDist < 30) {
+        // слишком близко — отходим назад
         const ang = Math.atan2(bot.y - nearestEnemy.y, bot.x - nearestEnemy.x);
-        bot.targetX = bot.x + Math.cos(ang) * 80;
-        bot.targetY = bot.y + Math.sin(ang) * 80;
+        bot.targetX = bot.x + Math.cos(ang) * 90;
+        bot.targetY = bot.y + Math.sin(ang) * 90;
       } else {
-        // 25-35 — оптимальная дистанция: стоим и стреляем
+        // 30-45 — оптимальная дистанция: стоим и стреляем
         bot.targetX = bot.x;
         bot.targetY = bot.y;
       }
@@ -1003,7 +1003,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.7.1-base-heal+presses+pistol+shopdown',
+    matchVersion: 'v0.7.2-fastbot+timer-under-lvl+pistol-fix',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
