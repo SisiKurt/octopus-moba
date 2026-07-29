@@ -24,6 +24,7 @@
   #cv { position:absolute; left:0; top:0; width:100vw; height:100vh; background:#1a1a2a; image-rendering:pixelated; touch-action:none; }
 
   #hud { position:absolute; top:0; left:0; right:0; padding:8px 10px; display:none;
+    text-align:left;
     background:linear-gradient(180deg, rgba(0,0,0,.6), transparent); pointer-events:none; z-index:5; }
   #hud .row { display:flex; gap:10px; align-items:center; font-size:14px; }
   #hud .bar { flex:1; height:10px; background:#333; border-radius:5px; overflow:hidden; }
@@ -88,7 +89,7 @@
   #shop button .price { position:absolute; top:1px; right:3px; font-size:8px;
     color:#ffd54a; font-weight:bold; }
   #shop button.owned { opacity:.5; background:#103a1f; border-color:#22dd66; }
-  #shop button.starter { opacity:.6; background:#1a2a3a; border-color:#7ad7ff; cursor:default; }
+  #shop button.starter { opacity:0.95; background:#3a5a7a; border-color:#a8e6ff; cursor:default; box-shadow:0 0 6px rgba(122,215,255,.6); }
   #shop button:disabled { opacity:.4; }
   #shop .merge-hint { flex-basis:100%; font-size:10px; color:#888; margin-top:2px; text-align:center; }
 
@@ -111,7 +112,7 @@
       <div class="bar"><div id="hp" style="width:100%"></div></div>
       <span class="gold" id="gold">0$</span>
     </div>
-    <div id="timer" style="margin-top:6px;text-align:center;color:#7ad7ff;padding:4px 12px;background:rgba(0,0,0,.7);border-radius:14px;font-family:monospace;font-size:13px;font-weight:bold;letter-spacing:1px;">⏱ 00:00</div>
+    <div id="timer" style="margin-top:6px;display:inline-block;color:#7ad7ff;padding:5px 12px;background:rgba(0,0,0,.7);border-radius:14px;font-family:monospace;font-size:13px;font-weight:bold;letter-spacing:1px;">⏱ 00:00</div>
   </div>
 
   <div id="heal-indicator" style="position:absolute;top:34px;left:50%;transform:translateX(-50%);background:rgba(34,222,102,.85);color:#000;padding:2px 8px;border-radius:10px;font-size:10px;display:none;z-index:20;font-weight:bold;">+ HP</div>
@@ -119,7 +120,7 @@
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
     <h3>Выбери своего осьминога</h3>
-    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.2 · fast bots + timer-under-lvl</div>
+    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.3</div>
     <div class="list">
       <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
       <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>

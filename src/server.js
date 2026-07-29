@@ -661,10 +661,15 @@ function tick() {
       bot.targetX = bot.x;
       bot.targetY = bot.y;
     } else {
-      // FARM: цель №1 — вражеская база. Убиваем мобов на пути (приоритет выше базы).
+      // FARM: цель №1 — вражеская база. Если в радиусе 400 есть враг (игрок/бот) — идём к нему (давление).
       bot.state = 'FARM';
       const enemyBase = world.bases.find(b => b.owner !== bot.team);
-      if (nearestEnemyMob && nearestEnemyMobDist < 200) {
+      if (nearestEnemy && nearestDist < 400) {
+        // агрессивное давление: идём прямо на врага
+        bot.targetX = nearestEnemy.x;
+        bot.targetY = nearestEnemy.y;
+        bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
+      } else if (nearestEnemyMob && nearestEnemyMobDist < 200) {
         bot.targetX = nearestEnemyMob.x;
         bot.targetY = nearestEnemyMob.y;
         bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
@@ -1003,7 +1008,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.7.2-fastbot+timer-under-lvl+pistol-fix',
+    matchVersion: 'v0.7.3-pistol-visible+farm-pressure+timer-left',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
