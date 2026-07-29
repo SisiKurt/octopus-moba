@@ -626,13 +626,19 @@ function tick() {
     } else if (bot.state === 'FIGHT') {
       // целимся во врага
       bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      // небольшой kite: держим дистанцию
-      if (nearestDist < 80) {
+      // давление на врага: идём к нему, но не вплотную (держим дистанцию 30-35)
+      if (nearestDist > 35) {
+        // наступаем — медленно сокращаем дистанцию
+        bot.targetX = nearestEnemy.x;
+        bot.targetY = nearestEnemy.y;
+      } else if (nearestDist < 25) {
+        // слишком близко — отходим
         const ang = Math.atan2(bot.y - nearestEnemy.y, bot.x - nearestEnemy.x);
-        bot.targetX = bot.x + Math.cos(ang) * 100;
-        bot.targetY = bot.y + Math.sin(ang) * 100;
+        bot.targetX = bot.x + Math.cos(ang) * 80;
+        bot.targetY = bot.y + Math.sin(ang) * 80;
       } else {
-        bot.targetX = bot.x;  // стоим
+        // 25-35 — оптимальная дистанция: стоим и стреляем
+        bot.targetX = bot.x;
         bot.targetY = bot.y;
       }
     } else if (bot.state === 'SHOP') {
@@ -784,11 +790,13 @@ function tick() {
     }
     if (hit) {
       hit.hp -= Math.max(1, pr.dmg - (hit.armor || 0));
-      // респаун бота у своей базы
+      // респаун бота у своей базы, в СВОЁМ коридоре (а не в центре — иначе упёрся в стену)
       if (hit.isBot && hit.hp <= 0) {
         const myBase = world.bases.find(b => b.owner === hit.team);
         if (myBase) {
-          hit.x = myBase.x + (Math.random()-0.5)*60;
+          // выбираем lane по чётности bot.id (как в FARM-логике выше)
+          const lane = (hit.id % 2 === 0) ? 'left' : 'right';
+          hit.x = world.lanes[lane].x + (Math.random()-0.5)*30;
           hit.y = hit.team === 'blue' ? MAP_H - 130 : 100;
           const def = HERO_DEFS[hit.hero];
           hit.hp = def.baseStats.hp;
@@ -995,7 +1003,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.7.0-autoaim+8creeps+bots',
+    matchVersion: 'v0.7.1-base-heal+presses+pistol+shopdown',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
