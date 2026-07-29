@@ -75,6 +75,7 @@ function createWorld() {
     nextId: 1,
     // счётчик спавнов per (lane,team) — для прогрессии сложности крипов
     spawnCounter: {},   // {"left:blue": 1, "left:red": 2, ...}
+    matchStartTime: Date.now(),  // для таймера матча
   };
 }
 
@@ -860,6 +861,8 @@ setInterval(() => {
   tick();
   const snapshot = {
     tick: world.tick,
+    elapsedMs: Date.now() - world.matchStartTime,
+    matchVersion: 'v0.5.0-mobs+merge+timer',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({

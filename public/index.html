@@ -119,6 +119,7 @@
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
     <h3>Выбери своего осьминога</h3>
+    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.5.0</div>
     <div class="list">
       <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
       <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>
@@ -451,14 +452,15 @@ socket.on('state', state => {
 });
 
 // ---------- UI ----------
-// Иконки для каждого ствола (эмодзи — коротко и читается)
+// SVG-иконки для каждого ствола (стилизованные, ~32×24px внутри слота 52×52).
+// Цвета разные для лучшего различия в магазине.
 const WEAPON_ICONS = {
-  pistol:   '🔫',
-  shotgun:  '💥',
-  rifle:    '🎯',
-  smg:      '🔫',
-  cannon:   '💣',
-  molotov:  '🔥',
+  pistol:   `<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#dde" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h14l4-3h6v6h-6l-2-2h-4v6h-4v-3h-2v3h-3v-3h-3z" fill="#556"/><circle cx="5" cy="12" r="1" fill="#fc3"/></g></svg>`,
+  shotgun:  `<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#dde" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h24v6h-24v-2h-2v-2h2z" fill="#864"/><path d="M26 4l-4 8M30 4l-4 8" stroke="#fc3" stroke-width="2"/><path d="M28 16l6-2-6-2" fill="#fa3"/></g></svg>`,
+  rifle:    `<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#dde" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11h22v4h-22zm22-1l4-1v6l-4-1z" fill="#484"/><circle cx="27" cy="13" r="1.5" fill="#7c4"/><path d="M5 11h12" stroke="#888" stroke-width="0.5"/></g></svg>`,
+  smg:      `<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#dde" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h18v3h-18zm18-2h4l3-2h4v6h-4l-3-2h-4z" fill="#646"/><path d="M10 16v5M14 16v6M18 16v4" stroke="#fc6" stroke-width="0.8"/></g></svg>`,
+  cannon:   `<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#dde" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="13" r="10" fill="#432"/><circle cx="16" cy="13" r="6" fill="#864"/><path d="M16 9l-2-3M19 12l3-1M16 17l2 3M13 14l-3 1" stroke="#fa3" stroke-width="1.5"/></g></svg>`,
+  molotov:  `<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#dde" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8l-2 6v8h6v-8l-2-6z" fill="#630"/><path d="M11 6c0-2 4-4 4-4s4 2 4 4-4 1-4 4-4-2-4-4z" fill="#f84" stroke="#fc3"/><path d="M9 14c-2 1-3 3-2 5M23 14c2 1 3 3 2 5" stroke="#fb5" stroke-width="1"/></g></svg>`,
 };
 function renderShop() {
   shop.innerHTML = '';
