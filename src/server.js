@@ -873,7 +873,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.5.0-mobs+merge+timer',
+    matchVersion: 'v0.6.0-autoaim+8creeps+bots',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
