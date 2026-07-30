@@ -1008,7 +1008,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.7.3-pistol-visible+farm-pressure+timer-left',
+    matchVersion: 'v0.7.5-merge-toast-fade',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({

@@ -97,9 +97,11 @@
   #shop-indicator { position:absolute; left:50%; transform:translateX(-50%);
     background:#22dd66; color:#000; padding:4px 10px; border-radius:12px; font-size:11px; display:none; z-index:10; }
 
-  /* мерж-подсказка в инвентаре */
+  /* мерж-подсказка в инвентаре — временный тост на 2.5 сек */
   #merge-hint { position:absolute; right:70px; top:50%; transform:translateY(-50%);
-    background:#ffaa00; color:#000; padding:4px 8px; border-radius:6px; font-size:10px; display:none; z-index:10; white-space:nowrap; }
+    background:#ffaa00; color:#000; padding:4px 8px; border-radius:6px; font-size:10px; display:none; z-index:10; white-space:nowrap;
+    animation:fadeOut .4s ease 2.1s forwards; }
+  @keyframes fadeOut { to { opacity:0; } }
 </style>
 </head>
 <body>
@@ -120,7 +122,7 @@
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
     <h3>Выбери своего осьминога</h3>
-    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.3</div>
+    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.5</div>
     <div class="list">
       <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
       <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>
@@ -133,7 +135,7 @@
   <div id="inventory"></div>
   <div id="shop"></div>
   <div id="shop-indicator">Магазин рядом ⬇</div>
-  <div id="merge-hint">Одно оружие ×2 = мерж</div>
+  <div id="merge-hint" style="display:none">Одно оружие ×2 = мерж</div>
   <div id="waking" style="display:none;position:absolute;inset:0;background:rgba(10,10,20,.85);z-index:50;align-items:center;justify-content:center;flex-direction:column;color:#eee;font-family:system-ui;text-align:center;padding:20px;pointer-events:none;transition:opacity .4s;opacity:1;">
     <div style="font-size:48px;">🐙💤</div>
     <h2 style="margin:14px 0;">Render просыпается…</h2>
@@ -534,9 +536,29 @@ function updateHud(state) {
 
   // инвентарь: 6 слотов. Внутри иконка оружия + счётчик купленных копий (если > 1)
   const slots = [...inventoryDiv.querySelectorAll('.slot')];
-  // подсчёт копий для мерж-хинта: смотрим в weaponMerge (>=2 = мерж)
-  const hasMerge = Object.values(p.weaponMerge || {}).some(c => c >= 2);
-  mergeHint.style.display = hasMerge ? 'block' : 'none';
+  // всплывающая подсказка о мерже: показываем на 2.5 сек когда впервые видим кандидата на мерж
+  const mergeCandidates = Object.entries(p.weaponMerge || {}).filter(([k,c]) => c >= 2);
+  if (mergeCandidates.length > 0 && (!window._mergeHintActive || window._mergeHintWeap !== mergeCandidates[0][0])) {
+    const k = mergeCandidates[0][0];
+    const cnt = mergeCandidates[0][1];
+    const w = weapons[k];
+    // перезапускаем анимацию: убираем class, потом добавляем
+    mergeHint.textContent = `🔫 ${w ? w.name : k} ×${cnt} — можно мержить`;
+    mergeHint.style.display = 'block';
+    // принудительный reflow чтобы animation перезапустилась
+    void mergeHint.offsetWidth;
+    mergeHint.style.animation = 'none';
+    void mergeHint.offsetWidth;
+    mergeHint.style.animation = '';
+    window._mergeHintActive = true;
+    window._mergeHintWeap = k;
+    clearTimeout(window._mergeHintTimer);
+    window._mergeHintTimer = setTimeout(() => {
+      mergeHint.style.display = 'none';
+      window._mergeHintActive = false;
+      window._mergeHintWeap = null;
+    }, 2500);
+  }
 
   slots.forEach((s, i) => {
     if (i < inv.length) {
