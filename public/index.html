@@ -89,9 +89,10 @@
   #shop button .price { position:absolute; top:1px; right:3px; font-size:8px;
     color:#ffd54a; font-weight:bold; }
   #shop button.owned { opacity:.5; background:#103a1f; border-color:#22dd66; }
-  /* стартовое оружие — кнопка рабочая (для докупа 2-й копии), подсветка ★ */
-  #shop button.starter { opacity:1; background:#1f3a52; border-color:#a8e6ff; cursor:pointer; box-shadow:inset 0 0 8px rgba(122,215,255,.4); }
-  #shop button.starter:hover { background:#2a5278; }
+  /* стартовое оружие — кнопка рабочая (для докупа 2-й копии), яркая подсветка */
+  #shop button.starter { opacity:1; background:#2a5a82; border-color:#a8e6ff; cursor:pointer; box-shadow:inset 0 0 12px rgba(168,230,255,.7), 0 0 10px rgba(122,215,255,.5); }
+  #shop button.starter:hover { background:#3a7aa8; }
+  #shop button.starter .ico { filter:brightness(1.6); }
   #shop button:disabled { opacity:.4; }
   #shop .merge-hint { flex-basis:100%; font-size:10px; color:#888; margin-top:2px; text-align:center; }
 
@@ -120,7 +121,7 @@
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
     <h3>Выбери своего осьминога</h3>
-    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.6</div>
+    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.7</div>
     <div class="list">
       <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
       <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>

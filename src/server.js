@@ -155,6 +155,8 @@ function newBot(heroKey, team) {
     team,
     x: pickLaneX(),
     y: team === 'red' ? 100 : MAP_H - 130,
+    spawnX: pickLaneX(),
+    spawnY: team === 'red' ? 100 : MAP_H - 130,
     hp: def.baseStats.hp, maxHp: def.baseStats.hp,
     speed: def.baseStats.speed * 1.35,  // бот быстрее игрока (агрессивное давление)
     armor: def.baseStats.armor,
@@ -664,7 +666,17 @@ function tick() {
       // FARM: цель №1 — вражеская база. Если в радиусе 400 есть враг (игрок/бот) — идём к нему (давление).
       bot.state = 'FARM';
       const enemyBase = world.bases.find(b => b.owner !== bot.team);
-      if (nearestEnemy && nearestDist < 400) {
+      // если бот в радиусе 200 от своей базы (только что возродился) — явная цель: вражеская база
+      const myBase = world.bases.find(b => b.owner === bot.team);
+      const myDist = Math.hypot(bot.x - myBase.x, bot.y - myBase.y);
+      if (myDist < 200) {
+        // агрессивное давление от собственной базы — идём ВНИЗ (для red) или ВВЕРХ (для blue)
+        const forwardSign = bot.team === 'red' ? 1 : -1;
+        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+        bot.targetX = world.lanes[lane].x + (Math.random()-0.5) * 30;
+        bot.targetY = bot.y + forwardSign * 250;  // 250px вперёд от текущей позиции
+        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+      } else if (nearestEnemy && nearestDist < 400) {
         // агрессивное давление: идём прямо на врага
         bot.targetX = nearestEnemy.x;
         bot.targetY = nearestEnemy.y;
@@ -685,15 +697,21 @@ function tick() {
     }
 
     // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
-    if (bot.state === 'FARM' && Math.hypot(bot.x - bot.spawnX || bot.x, bot.y - bot.spawnY || bot.y) < 5) {
-      bot.stuckTicks = (bot.stuckTicks || 0) + 1;
-      if (bot.stuckTicks > 20) {  // 1 секунда застряли (50ms ticks)
-        // force push away from own base
-        const myBase = world.bases.find(b => b.owner === bot.team);
-        const ang = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);  // away from base
-        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-        bot.targetX = world.lanes[lane].x;
-        bot.targetY = bot.y + Math.cos(ang) * 200 * (bot.team === 'red' ? 1 : -1);
+    if (bot.state === 'FARM') {
+      const distFromSpawn = Math.hypot(bot.x - bot.spawnX, bot.y - bot.spawnY);
+      if (distFromSpawn < 10) {
+        bot.stuckTicks = (bot.stuckTicks || 0) + 1;
+        if (bot.stuckTicks > 30) {  // ~1.5 секунды застряли (50ms ticks)
+          // force push away from own base
+          const myBase = world.bases.find(b => b.owner === bot.team);
+          const ang = Math.atan2(bot.y - myBase.y, bot.x - myBase.x);  // away from base
+          const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+          bot.targetX = world.lanes[lane].x + Math.cos(ang) * 200;
+          bot.targetY = bot.y + Math.sin(ang) * 200;
+          bot.targetAngle = ang;
+          bot.stuckTicks = 0;
+        }
+      } else {
         bot.stuckTicks = 0;
       }
     } else {
@@ -1008,7 +1026,7 @@ setInterval(() => {
   const snapshot = {
     tick: world.tick,
     elapsedMs: world.matchStartTime ? Date.now() - world.matchStartTime : 0,
-    matchVersion: 'v0.7.6-pistol-clickable-no-merge-toast',
+    matchVersion: 'v0.7.7-pistol-brighter+hero-bot-aggressive',
     bases: world.bases,
     shop: world.shop,
     players: [...world.players.values()].map(p => ({
