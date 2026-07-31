@@ -1,9 +1,9 @@
-// Service Worker для Octopus MOBA // v11 force-reload
+// Service Worker для Octopus MOBA // v12 force-reload v0.7.12
 // Стратегия:
 //  • index.html и любые HTML — NetworkFirst (всегда с сервера, никакого кэша для разработки)
 //  • manifest.json + иконки — CacheFirst (редко меняются, можно офлайн)
 //  • socket.io, /state — не кэшируем
-const CACHE = 'octopus-moba-v11';
+const CACHE = 'octopus-moba-v12';
 const STATIC = [
   '/manifest.json',
   '/icon-192.png',
