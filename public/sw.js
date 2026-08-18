@@ -3,7 +3,7 @@
 //  • index.html и любые HTML — NetworkFirst (всегда с сервера, никакого кэша для разработки)
 //  • manifest.json + иконки — CacheFirst (редко меняются, можно офлайн)
 //  • socket.io, /state — не кэшируем
-const CACHE = 'octopus-moba-v14';
+const CACHE = 'octopus-moba-v15';
 const STATIC = [
   '/manifest.json',
   '/icon-192.png',
