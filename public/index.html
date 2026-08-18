@@ -73,8 +73,8 @@
 
   /* магазин — ВЕРТИКАЛЬНЫЙ столбик из 6 иконок, расположен ПОД жёлтым SHOP на канвасе */
   #shop { position:absolute; transform:none;
-    display:flex; flex-direction:column; flex-wrap:nowrap; gap:4px; align-items:center;
-    justify-content:flex-start; z-index:10; display:none;
+    display:flex; flex-direction:row; flex-wrap:nowrap; gap:4px; align-items:center;
+    justify-content:center; z-index:10; display:none;
     padding:4px; white-space:nowrap; overflow:visible; }
   #shop button {
     width:48px; height:48px; padding:0;
@@ -230,31 +230,42 @@ function resize() {
 function positionOverlays() {
   const r = cv.getBoundingClientRect();   // реальные экранные координаты канваса
 
-  // ---- shop: ВЕРТИКАЛЬНЫЙ столбик из 6 иконок, расположен ПОД жёлтым SHOP-кнопкой на канвасе ----
-  // мировой координата world.shop.x показано на канвасе; магазин центрируется горизонтально по нему
+  // ---- shop: ГОРИЗОНТАЛЬНЫЙ ряд из 6 иконок, расположен ПОД жёлтым SHOP-кнопкой на канвасе ----
+  // pistol → shotgun (центр, под SHOP) → rifle → smg → cannon → molotov
+  // вертикальная линия между shotgun и rifle проходит через центр жёлтого SHOP
   const SHOP_BTN = 48;
   const SHOP_GAP = 4;
   const SHOP_BTN_COUNT = 6;
-  // высота магазина: 6 × 48 + 5 × 4 gap = 308px; оставляем запас над инвентарём
-  const shopH = SHOP_BTN_COUNT * SHOP_BTN + (SHOP_BTN_COUNT - 1) * SHOP_GAP + 8;  // +8 padding
-  // позиция world.shop на канвасе (в относительных единицах канваса): shop.x / MAP_W * r.width
+  // ширина ряда: 6 × 48 + 5 × 4 gap = 308px (укладывается в 480 ширины канваса)
+  const shopW = SHOP_BTN_COUNT * SHOP_BTN + (SHOP_BTN_COUNT - 1) * SHOP_GAP + 8;  // +8 padding
+  // позиция world.shop на канвасе (в пикселях экрана)
   let shopCanvasX = 0;
   if (lastState && lastState.shop) {
     shopCanvasX = (lastState.shop.x / (lastState.mapW || 480)) * r.width;
   } else {
-    shopCanvasX = r.width * 0.25;  // fallback: четверть ширины канваса
+    shopCanvasX = r.width * 0.25;
   }
-  // центрируем магазин горизонтально по world.shop.x (чтобы ВСЕ 6 иконок были видны)
-  const colLeft = r.left + shopCanvasX - (SHOP_BTN / 2);
-  // магазин должен быть НИЖЕ world.shop на канвасе (чтобы НЕ касаться жёлтого SHOP)
-  const colTop = r.bottom - shopH - 16;  // 16px запас снизу канваса
+  // shotgun (центральная кнопка) — прямо под жёлтым SHOP;
+  // чтобы ЦЕНТР shotgun оказался под world.shop.x, отступаем от левого края канваса:
+  // [Pistol][Shotgun][Rifle][SMG][Cannon][Molotov] = 0,1,2,3,4,5
+  // Shotgun — индекс 1 (после pistol), значит центр ряда сдвинут относительно shotgun.
+  // Левая граница ряда = shopCanvasX - (1 + 0.5) * SHOP_BTN - 1 * SHOP_GAP
+  const rowLeft = r.left + shopCanvasX - (1.5 * SHOP_BTN + SHOP_GAP);
+  // ряд должен быть ПОД жёлтым SHOP-кнопкой на канвасе
+  let shopCanvasY = 0;
+  if (lastState && lastState.shop) {
+    shopCanvasY = (lastState.shop.y / (lastState.mapH || 854)) * r.height;
+  } else {
+    shopCanvasY = r.height * 0.93;
+  }
+  const rowTop = r.top + shopCanvasY + 12;  // 12px ниже жёлтого SHOP
   shop.style.maxWidth = '';
-  shop.style.left = colLeft + 'px';
+  shop.style.left = rowLeft + 'px';
   shop.style.right = 'auto';
   shop.style.bottom = '';
-  shop.style.top = colTop + 'px';
+  shop.style.top = rowTop + 'px';
   shop.style.transform = 'none';
-  shop.setAttribute('data-orient', 'column');
+  shop.setAttribute('data-orient', 'row');
 
   // ---- shop-indicator: маленькая плашка чуть выше shop ----
   shopIndicator.style.left = (r.left + r.width / 2) + 'px';
