@@ -121,7 +121,7 @@
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
     <h3>Выбери своего осьминога</h3>
-    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.15</div>
+    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.16</div>
     <div class="list">
       <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
       <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>
@@ -238,6 +238,7 @@ function positionOverlays() {
   const SHOP_BTN_COUNT = 6;
   // ширина ряда: 6 × 48 + 5 × 4 gap + 8 padding = 316px
   const shopW = SHOP_BTN_COUNT * SHOP_BTN + (SHOP_BTN_COUNT - 1) * SHOP_GAP + 8;
+  const shopH = SHOP_BTN + 8; // высота ряда + padding = 56px
   // позиция world.shop на канвасе (в пикселях экрана)
   let shopCanvasX = 0;
   let shopCanvasY = 0;
