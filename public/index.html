@@ -121,7 +121,7 @@
   <div id="hero-pick">
     <h2>🐙 Octopus MOBA</h2>
     <h3>Выбери своего осьминога</h3>
-    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.19</div>
+    <div id="version-tag" style="font-size:10px;color:#7ad7ff;font-family:monospace;margin:6px 0 14px;padding:3px 8px;background:rgba(122,215,255,.1);border-radius:4px;border:1px solid rgba(122,215,255,.3);">v0.7.20</div>
     <div class="list">
       <button class="green" data-h="agile">Ловкач<br><small>быстрый</small></button>
       <button class="blue"  data-h="tank">Танк<br><small>бронированный</small></button>
@@ -249,9 +249,12 @@ function positionOverlays() {
     shopCanvasX = r.width * 0.25;
     shopCanvasY = r.height * 0.93;
   }
-  // центрируем ГОРИЗОНТАЛЬНЫЙ ряд по world.shop.x: SHOTGUN (2-я кнопка) под жёлтым SHOP на канвасе.
-  // Если центрировать ряд по shopCanvasX — под канвасом окажется SHOTGUN.
-  const rowLeft = r.left + shopCanvasX - (shopW / 2);
+  // центрируем ГОРИЗОНТАЛЬНЫЙ ряд по world.shop.x: RIFLE (3-я кнопка) под жёлтым SHOP на канвасе.
+  // Если центрировать ряд по shopCanvasX — под канвасом будет SHOTGUN (2-я кнопка).
+  // Сдвигаем ряд ВПРАВО на (1 кнопка + gap), чтобы RIFLE оказался под shopCanvasX.
+  // pistol остаётся слева, molotov справа.
+  const SHIFT = SHOP_BTN + SHOP_GAP; // 48+4 = 52px
+  const rowLeft = r.left + shopCanvasX - (shopW / 2) + SHIFT;
   // ряд должен быть ПОД жёлтым SHOP-кнопкой на канвасе (ниже world.shop.y)
   const rowTop = r.top + shopCanvasY + 12;  // 12px запас от жёлтого круга
   shop.style.maxWidth = '';
