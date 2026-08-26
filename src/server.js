@@ -603,9 +603,11 @@ function tick() {
     }
 
     // ---- STATE TRANSITIONS ----
-    // RETREAT: HP < 30% или плотный бой и HP < 50%
-    if (hpPct < 0.3) bot.state = 'RETREAT';
-    else if (bot.state === 'RETREAT' && hpPct > 0.6) bot.state = 'FARM';
+    // ---- STATE TRANSITIONS (v0.7.26: tighter thresholds, less shuttling) ----
+    // RETREAT только когда HP < 15% (раньше 30% — слишком часто убегал).
+    // Выход из RETREAT при HP > 40% (раньше 60% — слишком долго сидел у базы).
+    if (hpPct < 0.15) bot.state = 'RETREAT';
+    else if (bot.state === 'RETREAT' && hpPct > 0.4) bot.state = 'FARM';
 
     // FIGHT: враг в радиусе 250 — всегда враждебное давление когда видим
     if (bot.state !== 'RETREAT' && nearestEnemy && nearestDist < 250) {
