@@ -158,9 +158,9 @@ function newBot(heroKey, team) {
     shape: def.shape,
     team,
     x: pickLaneX(),
-    y: team === 'red' ? 100 : MAP_H - 130,
+    y: team === 'red' ? 180 : MAP_H - 210,   // v0.7.29: ближе к стене (было 100 / 130)
     spawnX: pickLaneX(),
-    spawnY: team === 'red' ? 100 : MAP_H - 130,
+    spawnY: team === 'red' ? 180 : MAP_H - 210,
     hp: def.baseStats.hp, maxHp: def.baseStats.hp,
     speed: def.baseStats.speed * 1.35,  // бот быстрее игрока (агрессивное давление)
     armor: def.baseStats.armor,
