@@ -179,10 +179,8 @@ function newBot(heroKey, team) {
 }
 
 function spawnInitialBots() {
-  // 2 бота у красной базы, один у синей (как союзник)
-  world.bots.push(newBot('tank',    'red'));
-  world.bots.push(newBot('agile',   'red'));
-  world.bots.push(newBot('miner',   'blue'));
+  // v0.7.34: только союзник игрока (blue miner). Красных ботов нет — только красные крипы.
+  world.bots.push(newBot('miner', 'blue'));
 }
 
 function recomputeStats(p) {
