@@ -39,21 +39,17 @@ for (const [k, w] of Object.entries(WEAPONS)) {
 }
 
 // ---------- Герои ----------
-// v0.7.28: только 2 цвета — синий (blue team) и красный (red team). Цвет = команда, не класс.
 const HERO_DEFS = {
-  agile: { name: 'Ловкач', color: '#4488ff', shape: 'square',
+  agile: { name: 'Ловкач', color: '#22dd66', shape: 'square',
     baseStats: { hp: 110, hpReg: 1.5, speed: 3.2, armor: 1 },
     passivePerLevel: { hp: 6, dmg: 1.5, speed: 0.15 } },
   tank: { name: 'Танк', color: '#4488ff', shape: 'square',
     baseStats: { hp: 200, hpReg: 1.0, speed: 2.4, armor: 5 },
     passivePerLevel: { hp: 18, armor: 1.2 } },
-  miner: { name: 'Минёр', color: '#4488ff', shape: 'square',
+  miner: { name: 'Минёр', color: '#cc44ff', shape: 'square',
     baseStats: { hp: 95, hpReg: 1.2, speed: 2.8, armor: 1 },
     passivePerLevel: { hp: 5, dmg: 2.0 } },
 };
-
-// Переопределение цвета по команде — все синие одинаковые, все красные одинаковые.
-const TEAM_COLORS = { blue: '#4488ff', red: '#ee3344' };
 
 // ---------- Мир ----------
 function createWorld() {
@@ -120,7 +116,7 @@ function newPlayer(socketId, heroKey) {
     id, socketId,
     hero: heroKey,
     name: def.name,
-    color: TEAM_COLORS['blue'],   // v0.7.28: цвет = команда
+    color: def.color,
     shape: def.shape,
     team: 'blue',                 // MVP: все в blue, потом разделим
     // старт у синей базы (снизу по центру)
@@ -154,14 +150,13 @@ function newBot(heroKey, team) {
     isBot: true,
     hero: heroKey,
     name: def.name + '-bot',
-    color: TEAM_COLORS[team] || def.color,   // v0.7.28: цвет = команда
+    color: def.color,
     shape: def.shape,
     team,
-    // v0.7.32: спавн ТОЧНО на своей базе (red → y=130 = чуть ниже красной базы y=80; blue → y=724)
     x: pickLaneX(),
-    y: team === 'red' ? 130 : MAP_H - 130,
+    y: team === 'red' ? 100 : MAP_H - 130,
     spawnX: pickLaneX(),
-    spawnY: team === 'red' ? 130 : MAP_H - 130,
+    spawnY: team === 'red' ? 100 : MAP_H - 130,
     hp: def.baseStats.hp, maxHp: def.baseStats.hp,
     speed: def.baseStats.speed * 1.35,  // бот быстрее игрока (агрессивное давление)
     armor: def.baseStats.armor,
@@ -232,8 +227,8 @@ function spawnMob(laneName, team, kills = 0, variant = null) {
   const tankBase  = { hp: 60, armor: 2, dmg: 6,  range: 18, speed: 0.7, size: 10 };
   const rangeBase = { hp: 24, armor: 0, dmg: 4,  range: 80, speed: 0.9, size: 8  };
   const base = (variant === 1) ? rangeBase : tankBase;
-  // v0.7.28: цвет по команде, как у героев (TEAM_COLORS)
-  const color = team === 'blue' ? TEAM_COLORS['blue'] : TEAM_COLORS['red'];
+  // цвет по команде, тип рисуется обводкой (range - жёлтая)
+  const color = team === 'blue' ? '#3399ff' : '#ff5544';
   return {
     id: world.nextId++,
     team,
@@ -607,28 +602,118 @@ function tick() {
       if (m.team !== bot.team && d < nearestEnemyMobDist) { nearestEnemyMob = m; nearestEnemyMobDist = d; }
     }
 
-    // ---- STATE TRANSITIONS (v0.7.29: ultra-simple) ----
-    // v0.7.29: только RETREAT для очень низкого HP, иначе всегда FARM к вражеской базе.
-    if (hpPct < 0.15) {
-      bot.state = 'RETREAT';
-    } else {
-      bot.state = 'FARM';
+    // ---- STATE TRANSITIONS ----
+    // RETREAT: HP < 30% или плотный бой и HP < 50%
+    if (hpPct < 0.3) bot.state = 'RETREAT';
+    else if (bot.state === 'RETREAT' && hpPct > 0.6) bot.state = 'FARM';
+
+    // FIGHT: враг в радиусе 250 — всегда враждебное давление когда видим
+    if (bot.state !== 'RETREAT' && nearestEnemy && nearestDist < 250) {
+      bot.state = 'FIGHT';
+    }
+
+    // SHOP: мало HP + есть золото + рядом с магазином
+    if ((hpPct < 0.5 && bot.gold >= 50) || (bot.inventory.length === 1 && bot.gold >= 80)) {
+      const distShop = Math.hypot(bot.x - world.shop.x, bot.y - world.shop.y);
+      if (distShop < 80) bot.state = 'SHOP';
     }
 
     // ---- ACTIONS ----
     if (bot.state === 'RETREAT') {
+      // бежим к своей базе
       const myBase = world.bases.find(b => b.owner === bot.team);
       bot.targetX = myBase.x;
       bot.targetY = myBase.y;
       bot.targetAngle = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);
+    } else if (bot.state === 'FIGHT') {
+      // целимся во врага
+      bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
+      // давление на врага: идём к нему, держа дистанцию ~35px (агрессивное наступление)
+      if (nearestDist > 45) {
+        // наступаем — быстро сокращаем дистанцию
+        bot.targetX = nearestEnemy.x;
+        bot.targetY = nearestEnemy.y;
+      } else if (nearestDist < 30) {
+        // слишком близко — отходим назад
+        const ang = Math.atan2(bot.y - nearestEnemy.y, bot.x - nearestEnemy.x);
+        bot.targetX = bot.x + Math.cos(ang) * 90;
+        bot.targetY = bot.y + Math.sin(ang) * 90;
+      } else {
+        // 30-45 — оптимальная дистанция: стоим и стреляем
+        bot.targetX = bot.x;
+        bot.targetY = bot.y;
+      }
+    } else if (bot.state === 'SHOP') {
+      // покупаем лучшее что можем
+      if (bot.aiCooldown <= 0) {
+        for (const [k, w] of Object.entries(WEAPONS)) {
+          if (!bot.inventory.includes(k) && bot.gold >= w.price) {
+            bot.gold -= w.price;
+            bot.inventory.push(k);
+            bot.weaponCooldowns[k] = 0;
+            if (!bot.weaponMerge[k]) bot.weaponMerge[k] = 1;
+            bot.aiCooldown = 30;
+            break;
+          }
+        }
+        // лечимся (телепорт на базу пока не реализован — просто +HP)
+        bot.hp = Math.min(bot.maxHp, bot.hp + 30);
+        bot.state = 'FARM';
+      }
+      bot.targetX = bot.x;
+      bot.targetY = bot.y;
     } else {
-      // v0.7.29: всегда идём к вражеской базе по lane (left/right).
+      // v0.7.21: FARM — цели ВСЕГДА вражеская база. Боты идут её атаковать.
+      // Игнорируем «+250 от текущей позиции» и «enemyBase.y +50» — бот должен
+      // идти НАПРЯМУЮ к вражеской базе по своей полосе (left/right lane).
+      bot.state = 'FARM';
       const enemyBase = world.bases.find(b => b.owner !== bot.team);
+      const myBase = world.bases.find(b => b.owner === bot.team);
+      const myDist = Math.hypot(bot.x - myBase.x, bot.y - myBase.y);
       const lane = (bot.id % 2 === 0) ? 'left' : 'right';
       const laneX = world.lanes[lane].x;
-      bot.targetX = laneX + (Math.random()-0.5) * 30;
-      bot.targetY = enemyBase.y;
-      bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+      if (myDist < 200) {
+        // только что возродился/у базы — дать направление и сразу тянуть к вражеской базе
+        bot.targetX = laneX + (Math.random()-0.5) * 30;
+        bot.targetY = enemyBase.y;  // прямо на базу
+        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+      } else if (nearestEnemy && nearestDist < 400) {
+        // агрессивное давление: идём прямо на врага
+        bot.targetX = nearestEnemy.x;
+        bot.targetY = nearestEnemy.y;
+        bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
+      } else if (nearestEnemyMob && nearestEnemyMobDist < 200) {
+        bot.targetX = nearestEnemyMob.x;
+        bot.targetY = nearestEnemyMob.y;
+        bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
+      } else {
+        // идём в своём коридоре (left/right) прямо к вражеской базе
+        bot.targetX = laneX + (Math.random()-0.5) * 30;
+        bot.targetY = enemyBase.y;  // прямо на вражескую базу
+        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+      }
+    }
+
+    // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
+    if (bot.state === 'FARM') {
+      const distFromSpawn = Math.hypot(bot.x - bot.spawnX, bot.y - bot.spawnY);
+      if (distFromSpawn < 10) {
+        bot.stuckTicks = (bot.stuckTicks || 0) + 1;
+        if (bot.stuckTicks > 30) {  // ~1.5 секунды застряли (50ms ticks)
+          // force push away from own base
+          const myBase = world.bases.find(b => b.owner === bot.team);
+          const ang = Math.atan2(bot.y - myBase.y, bot.x - myBase.x);  // away from base
+          const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+          bot.targetX = world.lanes[lane].x + Math.cos(ang) * 200;
+          bot.targetY = bot.y + Math.sin(ang) * 200;
+          bot.targetAngle = ang;
+          bot.stuckTicks = 0;
+        }
+      } else {
+        bot.stuckTicks = 0;
+      }
+    } else {
+      bot.stuckTicks = 0;
     }
 
     // ---- MOVEMENT (с учётом стены по центру) ----
@@ -725,10 +810,7 @@ function tick() {
       }
     }
     if (hit) {
-      // v0.7.31: урон ИГНОРИРУЕТ armor игрока (было: armor=5 → 3 урона за выстрел по tank).
-      // armor работает только для базы/крипов, чтобы игрок не убивал tank одним выстрелом.
-      const dmgDealt = Math.max(1, pr.dmg - (hit.team === ownerTeam ? 0 : Math.min(2, hit.armor || 0)));
-      hit.hp -= dmgDealt;
+      hit.hp -= Math.max(1, pr.dmg - (hit.armor || 0));
       // респаун бота у своей базы, в СВОЁМ коридоре (а не в центре — иначе упёрся в стену)
       if (hit.isBot && hit.hp <= 0) {
         const myBase = world.bases.find(b => b.owner === hit.team);
