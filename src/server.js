@@ -618,36 +618,80 @@ function tick() {
       if (distShop < 80) bot.state = 'SHOP';
     }
 
-    // ---- ACTIONS (по аналогии с крипом + RETREAT/SHOP для выживания) ----
-    const enemyBase = world.bases.find(b => b.owner !== bot.team);
-    const myBase = world.bases.find(b => b.owner === bot.team);
-
-    // (0) RETREAT: HP < 20% — бежим к своей базе чтобы отхилиться
-    if (hpPct < 0.2) {
+    // ---- ACTIONS ----
+    if (bot.state === 'RETREAT') {
+      // бежим к своей базе
+      const myBase = world.bases.find(b => b.owner === bot.team);
       bot.targetX = myBase.x;
       bot.targetY = myBase.y;
       bot.targetAngle = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);
-      bot.state = 'RETREAT';
-    // (1) SHOP: HP < 35% + есть золото + близко к магазину + ЕСТЬ что покупать → покупаем и лечимся
-    } else if (hpPct < 0.35 && bot.gold >= 50 && Math.hypot(bot.x - world.shop.x, bot.y - world.shop.y) < 80) {
-      bot.targetX = world.shop.x;
-      bot.targetY = world.shop.y;
-      bot.targetAngle = Math.atan2(world.shop.y - bot.y, world.shop.x - bot.x);
-      bot.state = 'SHOP';
-    // (2) FIGHT: враг в радиусе 350 → идём к нему
-    } else if (nearestEnemy && nearestDist < 350) {
-      bot.targetX = nearestEnemy.x;
-      bot.targetY = nearestEnemy.y;
+    } else if (bot.state === 'FIGHT') {
+      // целимся во врага
       bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      bot.state = 'FIGHT';
-    // (3) FARM: иначе → к вражеской базе по своему lane (left/right)
+      // давление на врага: идём к нему, держа дистанцию ~35px (агрессивное наступление)
+      if (nearestDist > 45) {
+        // наступаем — быстро сокращаем дистанцию
+        bot.targetX = nearestEnemy.x;
+        bot.targetY = nearestEnemy.y;
+      } else if (nearestDist < 30) {
+        // слишком близко — отходим назад
+        const ang = Math.atan2(bot.y - nearestEnemy.y, bot.x - nearestEnemy.x);
+        bot.targetX = bot.x + Math.cos(ang) * 90;
+        bot.targetY = bot.y + Math.sin(ang) * 90;
+      } else {
+        // 30-45 — оптимальная дистанция: стоим и стреляем
+        bot.targetX = bot.x;
+        bot.targetY = bot.y;
+      }
+    } else if (bot.state === 'SHOP') {
+      // покупаем лучшее что можем
+      if (bot.aiCooldown <= 0) {
+        for (const [k, w] of Object.entries(WEAPONS)) {
+          if (!bot.inventory.includes(k) && bot.gold >= w.price) {
+            bot.gold -= w.price;
+            bot.inventory.push(k);
+            bot.weaponCooldowns[k] = 0;
+            if (!bot.weaponMerge[k]) bot.weaponMerge[k] = 1;
+            bot.aiCooldown = 30;
+            break;
+          }
+        }
+        // лечимся (телепорт на базу пока не реализован — просто +HP)
+        bot.hp = Math.min(bot.maxHp, bot.hp + 30);
+        bot.state = 'FARM';
+      }
+      bot.targetX = bot.x;
+      bot.targetY = bot.y;
     } else {
+      // v0.7.21: FARM — цели ВСЕГДА вражеская база. Боты идут её атаковать.
+      // Игнорируем «+250 от текущей позиции» и «enemyBase.y +50» — бот должен
+      // идти НАПРЯМУЮ к вражеской базе по своей полосе (left/right lane).
+      bot.state = 'FARM';
+      const enemyBase = world.bases.find(b => b.owner !== bot.team);
+      const myBase = world.bases.find(b => b.owner === bot.team);
+      const myDist = Math.hypot(bot.x - myBase.x, bot.y - myBase.y);
       const lane = (bot.id % 2 === 0) ? 'left' : 'right';
       const laneX = world.lanes[lane].x;
-      bot.targetX = laneX + (Math.random()-0.5) * 30;
-      bot.targetY = enemyBase.y;
-      bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
-      bot.state = 'FARM';
+      if (myDist < 200) {
+        // только что возродился/у базы — дать направление и сразу тянуть к вражеской базе
+        bot.targetX = laneX + (Math.random()-0.5) * 30;
+        bot.targetY = enemyBase.y;  // прямо на базу
+        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+      } else if (nearestEnemy && nearestDist < 400) {
+        // агрессивное давление: идём прямо на врага
+        bot.targetX = nearestEnemy.x;
+        bot.targetY = nearestEnemy.y;
+        bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
+      } else if (nearestEnemyMob && nearestEnemyMobDist < 200) {
+        bot.targetX = nearestEnemyMob.x;
+        bot.targetY = nearestEnemyMob.y;
+        bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
+      } else {
+        // идём в своём коридоре (left/right) прямо к вражеской базе
+        bot.targetX = laneX + (Math.random()-0.5) * 30;
+        bot.targetY = enemyBase.y;  // прямо на вражескую базу
+        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+      }
     }
 
     // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
@@ -670,6 +714,26 @@ function tick() {
       }
     } else {
       bot.stuckTicks = 0;
+    }
+
+    // v0.7.21b: КРАЙНИЙ КИК — если бот FARM/FIGHT и не двигался 3 секунды (distMove < 15 за 60 тиков),
+    // принудительно телепорт на ВРАЖЕСКУЮ БАЗУ. Лечит случаи когда бот залип на месте.
+    if ((bot.state === 'FARM' || bot.state === 'FIGHT') && !bot._lastX) {
+      bot._lastX = bot.x; bot._lastY = bot.y; bot._stuckTicks = 0;
+    } else if (bot.state === 'FARM' || bot.state === 'FIGHT') {
+      const moved = Math.hypot(bot.x - bot._lastX, bot.y - bot._lastY);
+      if (moved < 8) {
+        bot._stuckTicks = (bot._stuckTicks || 0) + 1;
+        if (bot._stuckTicks > 60) {  // 3 сек застряли
+          const enemyBase = world.bases.find(b => b.owner !== bot.team);
+          const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+          bot.x = world.lanes[lane].x + (Math.random()-0.5) * 30;
+          bot.y = enemyBase.y + (bot.team === 'red' ? 80 : -80);  // 80px от вражеской базы
+          bot._lastX = bot.x; bot._lastY = bot.y; bot._stuckTicks = 0;
+        }
+      } else {
+        bot._lastX = bot.x; bot._lastY = bot.y; bot._stuckTicks = 0;
+      }
     }
 
     // ---- MOVEMENT (с учётом стены по центру) ----
