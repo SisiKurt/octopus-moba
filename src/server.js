@@ -157,10 +157,11 @@ function newBot(heroKey, team) {
     color: TEAM_COLORS[team] || def.color,   // v0.7.28: цвет = команда
     shape: def.shape,
     team,
+    // v0.7.32: спавн ТОЧНО на своей базе (red → y=130 = чуть ниже красной базы y=80; blue → y=724)
     x: pickLaneX(),
-    y: team === 'red' ? 180 : MAP_H - 210,   // v0.7.29: ближе к стене (было 100 / 130)
+    y: team === 'red' ? 130 : MAP_H - 130,
     spawnX: pickLaneX(),
-    spawnY: team === 'red' ? 180 : MAP_H - 210,
+    spawnY: team === 'red' ? 130 : MAP_H - 130,
     hp: def.baseStats.hp, maxHp: def.baseStats.hp,
     speed: def.baseStats.speed * 1.35,  // бот быстрее игрока (агрессивное давление)
     armor: def.baseStats.armor,
