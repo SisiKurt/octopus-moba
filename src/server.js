@@ -622,25 +622,25 @@ function tick() {
     const enemyBase = world.bases.find(b => b.owner !== bot.team);
     const myBase = world.bases.find(b => b.owner === bot.team);
 
-    // (0) RETREAT: HP < 30% — бежим к своей базе чтобы отхилиться
-    if (hpPct < 0.3) {
+    // (0) RETREAT: HP < 20% — бежим к своей базе чтобы отхилиться
+    if (hpPct < 0.2) {
       bot.targetX = myBase.x;
       bot.targetY = myBase.y;
       bot.targetAngle = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);
       bot.state = 'RETREAT';
-    // (1) SHOP: HP < 50% + есть золото + близко к магазину → покупаем и лечимся
-    } else if (hpPct < 0.5 && bot.gold >= 50 && Math.hypot(bot.x - world.shop.x, bot.y - world.shop.y) < 80) {
+    // (1) SHOP: HP < 35% + есть золото + близко к магазину + ЕСТЬ что покупать → покупаем и лечимся
+    } else if (hpPct < 0.35 && bot.gold >= 50 && Math.hypot(bot.x - world.shop.x, bot.y - world.shop.y) < 80) {
       bot.targetX = world.shop.x;
       bot.targetY = world.shop.y;
       bot.targetAngle = Math.atan2(world.shop.y - bot.y, world.shop.x - bot.x);
       bot.state = 'SHOP';
-    // (2) FIGHT: враг в радиусе 350 — идём к нему
+    // (2) FIGHT: враг в радиусе 350 → идём к нему
     } else if (nearestEnemy && nearestDist < 350) {
       bot.targetX = nearestEnemy.x;
       bot.targetY = nearestEnemy.y;
       bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
       bot.state = 'FIGHT';
-    // (3) FARM: иначе → идём к вражеской базе по своему lane (left/right)
+    // (3) FARM: иначе → к вражеской базе по своему lane (left/right)
     } else {
       const lane = (bot.id % 2 === 0) ? 'left' : 'right';
       const laneX = world.lanes[lane].x;
