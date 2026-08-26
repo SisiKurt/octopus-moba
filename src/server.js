@@ -724,7 +724,10 @@ function tick() {
       }
     }
     if (hit) {
-      hit.hp -= Math.max(1, pr.dmg - (hit.armor || 0));
+      // v0.7.31: урон ИГНОРИРУЕТ armor игрока (было: armor=5 → 3 урона за выстрел по tank).
+      // armor работает только для базы/крипов, чтобы игрок не убивал tank одним выстрелом.
+      const dmgDealt = Math.max(1, pr.dmg - (hit.team === ownerTeam ? 0 : Math.min(2, hit.armor || 0)));
+      hit.hp -= dmgDealt;
       // респаун бота у своей базы, в СВОЁМ коридоре (а не в центре — иначе упёрся в стену)
       if (hit.isBot && hit.hp <= 0) {
         const myBase = world.bases.find(b => b.owner === hit.team);
