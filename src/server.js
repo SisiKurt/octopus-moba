@@ -604,99 +604,34 @@ function tick() {
 
     // ---- STATE TRANSITIONS ----
     // ---- STATE TRANSITIONS (v0.7.26: tighter thresholds, less shuttling) ----
-    // RETREAT только когда HP < 15% (раньше 30% — слишком часто убегал).
-    // Выход из RETREAT при HP > 40% (раньше 60% — слишком долго сидел у базы).
-    if (hpPct < 0.15) bot.state = 'RETREAT';
-    else if (bot.state === 'RETREAT' && hpPct > 0.4) bot.state = 'FARM';
-
-    // FIGHT: враг в радиусе 250 — всегда враждебное давление когда видим
-    if (bot.state !== 'RETREAT' && nearestEnemy && nearestDist < 250) {
-      bot.state = 'FIGHT';
-    }
-
-    // SHOP: мало HP + есть золото + рядом с магазином
-    if ((hpPct < 0.5 && bot.gold >= 50) || (bot.inventory.length === 1 && bot.gold >= 80)) {
-      const distShop = Math.hypot(bot.x - world.shop.x, bot.y - world.shop.y);
-      if (distShop < 80) bot.state = 'SHOP';
-    }
+    // v0.7.27: простая и надёжная логика по аналогии с крипом.
+        // (1) враг в радиусе 350 → идём к нему
+        // (2) иначе → идём к вражеской базе по lane (без сложных state transitions)
+        const enemyBase = world.bases.find(b => b.owner !== bot.team);
+        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+        const laneX = world.lanes[lane].x;
+        if (nearestEnemy && nearestDist < 350) {
+          bot.targetX = nearestEnemy.x;
+          bot.targetY = nearestEnemy.y;
+          bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
+          bot.state = 'FIGHT';
+        } else {
+          bot.targetX = laneX + (Math.random()-0.5) * 30;
+          bot.targetY = enemyBase.y;
+          bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+          bot.state = 'FARM';
+        }
+        // Skip all state transitions (RETREAT/SHOP) — они вызывали залипание.
 
     // ---- ACTIONS ----
-    if (bot.state === 'RETREAT') {
-      // бежим к своей базе
-      const myBase = world.bases.find(b => b.owner === bot.team);
-      bot.targetX = myBase.x;
-      bot.targetY = myBase.y;
-      bot.targetAngle = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);
-    } else if (bot.state === 'FIGHT') {
-      // целимся во врага
-      bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      // давление на врага: идём к нему, держа дистанцию ~35px (агрессивное наступление)
-      if (nearestDist > 45) {
-        // наступаем — быстро сокращаем дистанцию
-        bot.targetX = nearestEnemy.x;
-        bot.targetY = nearestEnemy.y;
-      } else if (nearestDist < 30) {
-        // слишком близко — отходим назад
-        const ang = Math.atan2(bot.y - nearestEnemy.y, bot.x - nearestEnemy.x);
-        bot.targetX = bot.x + Math.cos(ang) * 90;
-        bot.targetY = bot.y + Math.sin(ang) * 90;
-      } else {
-        // 30-45 — оптимальная дистанция: стоим и стреляем
-        bot.targetX = bot.x;
-        bot.targetY = bot.y;
-      }
-    } else if (bot.state === 'SHOP') {
-      // покупаем лучшее что можем
-      if (bot.aiCooldown <= 0) {
-        for (const [k, w] of Object.entries(WEAPONS)) {
-          if (!bot.inventory.includes(k) && bot.gold >= w.price) {
-            bot.gold -= w.price;
-            bot.inventory.push(k);
-            bot.weaponCooldowns[k] = 0;
-            if (!bot.weaponMerge[k]) bot.weaponMerge[k] = 1;
-            bot.aiCooldown = 30;
-            break;
-          }
+        // v0.7.27: target и state уже установлены в STATE TRANSITIONS (FIGHT/FARM).
+        // Здесь только доп. проверка RETREAT для очень редкого случая (HP <5%).
+        if (bot.hp / bot.maxHp < 0.05) {
+          const myBase = world.bases.find(b => b.owner === bot.team);
+          bot.targetX = myBase.x;
+          bot.targetY = myBase.y;
+          bot.state = 'RETREAT';
         }
-        // лечимся (телепорт на базу пока не реализован — просто +HP)
-        bot.hp = Math.min(bot.maxHp, bot.hp + 30);
-        bot.state = 'FARM';
-      }
-      bot.targetX = bot.x;
-      bot.targetY = bot.y;
-    } else {
-      // v0.7.21: FARM — цели ВСЕГДА вражеская база. Боты идут её атаковать.
-      // Игнорируем «+250 от текущей позиции» и «enemyBase.y +50» — бот должен
-      // идти НАПРЯМУЮ к вражеской базе по своей полосе (left/right lane).
-      bot.state = 'FARM';
-      const enemyBase = world.bases.find(b => b.owner !== bot.team);
-      const myBase = world.bases.find(b => b.owner === bot.team);
-      const myDist = Math.hypot(bot.x - myBase.x, bot.y - myBase.y);
-      const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-      const laneX = world.lanes[lane].x;
-      if (myDist < 200) {
-        // только что возродился/у базы — дать направление и сразу тянуть к вражеской базе
-        bot.targetX = laneX + (Math.random()-0.5) * 30;
-        bot.targetY = enemyBase.y;  // прямо на базу
-        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
-      } else if (nearestEnemy && nearestDist < 400) {
-        // агрессивное давление: идём прямо на врага
-        bot.targetX = nearestEnemy.x;
-        bot.targetY = nearestEnemy.y;
-        bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      } else if (nearestEnemyMob && nearestEnemyMobDist < 200) {
-        bot.targetX = nearestEnemyMob.x;
-        bot.targetY = nearestEnemyMob.y;
-        bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
-      } else {
-        // идём в своём коридоре (left/right) прямо к вражеской базе
-        bot.targetX = laneX + (Math.random()-0.5) * 30;
-        bot.targetY = enemyBase.y;  // прямо на вражескую базу
-        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
-      }
-    }
-
-    // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
     if (bot.state === 'FARM') {
       const distFromSpawn = Math.hypot(bot.x - bot.spawnX, bot.y - bot.spawnY);
       if (distFromSpawn < 10) {
