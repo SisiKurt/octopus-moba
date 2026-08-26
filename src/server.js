@@ -6,6 +6,9 @@ import http from 'http';
 import { Server } from 'socket.io';
 
 const PORT = process.env.PORT || 3001;
+
+// v0.7.33: только 2 цвета — синий и красный
+const TEAM_COLORS = { blue: '#4488ff', red: '#ee3344' };
 const TICK_MS = 50;            // 20 тиков/сек
 const MAP_W = 480;                 // ширина карты (мобильный портрет, ~9:16)
 const MAP_H = Math.round(MAP_W * 16 / 9);  // 480 × 16/9 = 854 — высота карты
@@ -116,7 +119,7 @@ function newPlayer(socketId, heroKey) {
     id, socketId,
     hero: heroKey,
     name: def.name,
-    color: def.color,
+    color: TEAM_COLORS.blue,   // v0.7.33: 2 цвета (blue/red)
     shape: def.shape,
     team: 'blue',                 // MVP: все в blue, потом разделим
     // старт у синей базы (снизу по центру)
@@ -150,7 +153,7 @@ function newBot(heroKey, team) {
     isBot: true,
     hero: heroKey,
     name: def.name + '-bot',
-    color: def.color,
+    color: TEAM_COLORS[team] || TEAM_COLORS.red,   // v0.7.33: 2 цвета (blue/red)
     shape: def.shape,
     team,
     x: pickLaneX(),
@@ -227,8 +230,8 @@ function spawnMob(laneName, team, kills = 0, variant = null) {
   const tankBase  = { hp: 60, armor: 2, dmg: 6,  range: 18, speed: 0.7, size: 10 };
   const rangeBase = { hp: 24, armor: 0, dmg: 4,  range: 80, speed: 0.9, size: 8  };
   const base = (variant === 1) ? rangeBase : tankBase;
-  // цвет по команде, тип рисуется обводкой (range - жёлтая)
-  const color = team === 'blue' ? '#3399ff' : '#ff5544';
+  // v0.7.33: цвет по команде
+  const color = team === 'blue' ? TEAM_COLORS.blue : TEAM_COLORS.red;
   return {
     id: world.nextId++,
     team,
