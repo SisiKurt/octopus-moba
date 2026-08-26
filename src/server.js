@@ -698,28 +698,6 @@ function tick() {
       }
     }
 
-    // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
-    if (bot.state === 'FARM') {
-      const distFromSpawn = Math.hypot(bot.x - bot.spawnX, bot.y - bot.spawnY);
-      if (distFromSpawn < 10) {
-        bot.stuckTicks = (bot.stuckTicks || 0) + 1;
-        if (bot.stuckTicks > 30) {  // ~1.5 секунды застряли (50ms ticks)
-          // force push away from own base
-          const myBase = world.bases.find(b => b.owner === bot.team);
-          const ang = Math.atan2(bot.y - myBase.y, bot.x - myBase.x);  // away from base
-          const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-          bot.targetX = world.lanes[lane].x + Math.cos(ang) * 200;
-          bot.targetY = bot.y + Math.sin(ang) * 200;
-          bot.targetAngle = ang;
-          bot.stuckTicks = 0;
-        }
-      } else {
-        bot.stuckTicks = 0;
-      }
-    } else {
-      bot.stuckTicks = 0;
-    }
-
     // ---- MOVEMENT (с учётом стены по центру) ----
     const dx = bot.targetX - bot.x;
     const dy = bot.targetY - bot.y;
