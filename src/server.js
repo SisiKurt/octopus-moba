@@ -179,10 +179,10 @@ function newBot(heroKey, team) {
 }
 
 function spawnInitialBots() {
-  // v0.7.35: синий союзник + 2 красных бота. Логика team-aware (FARM/FIGHT/RETREAT) — каждый бот идёт к ВРАЖЕСКОЙ базе и стреляет по врагам.
-  world.bots.push(newBot('miner', 'blue'));
-  world.bots.push(newBot('tank',  'red'));
-  world.bots.push(newBot('agile', 'red'));
+  // 2 бота у красной базы, один у синей (как союзник)
+  world.bots.push(newBot('tank',    'red'));
+  world.bots.push(newBot('agile',   'red'));
+  world.bots.push(newBot('miner',   'blue'));
 }
 
 function recomputeStats(p) {
@@ -573,172 +573,55 @@ function tick() {
     }
   }
 
-  // ---------- Боты: AI ----------
+  // ---------- Боты: AI (v0.7.36 — упрощённая логика как у крипов) ----------
   for (const bot of world.bots) {
     if (bot.hp <= 0) continue;
     // тикаем кулдауны оружия
     for (const wKey of Object.keys(bot.weaponCooldowns)) {
       if (bot.weaponCooldowns[wKey] > 0) bot.weaponCooldowns[wKey]--;
     }
-    if (bot.aiCooldown > 0) bot.aiCooldown--;
 
-    // смотрим вокруг
-    const hpPct = bot.hp / bot.maxHp;
-    // ищем ближайшего врага (игрок + бот противника)
+    // 1) ближайший враг: игрок / бот / крип противника в радиусе 250
     let nearestEnemy = null, nearestDist = 250;
     for (const p of world.players.values()) {
-      if (p.team === bot.team) continue;
+      if (p.team === bot.team || p.hp <= 0) continue;
       const d = Math.hypot(p.x - bot.x, p.y - bot.y);
       if (d < nearestDist) { nearestEnemy = p; nearestDist = d; }
     }
     for (const other of world.bots) {
-      if (other === bot || other.team !== bot.team) continue;
+      if (other === bot || other.team === bot.team || other.hp <= 0) continue;
       const d = Math.hypot(other.x - bot.x, other.y - bot.y);
       if (d < nearestDist) { nearestEnemy = other; nearestDist = d; }
     }
-    // ищем ближайшего моба (своей команды — фарм; чужой — враг)
-    let nearestAllyMob = null, nearestAllyMobDist = 999;
-    let nearestEnemyMob = null, nearestEnemyMobDist = 999;
     for (const m of allMobs()) {
+      if (m.team === bot.team || m.hp <= 0) continue;
       const d = Math.hypot(m.x - bot.x, m.y - bot.y);
-      if (m.team === bot.team && d < nearestAllyMobDist) { nearestAllyMob = m; nearestAllyMobDist = d; }
-      if (m.team !== bot.team && d < nearestEnemyMobDist) { nearestEnemyMob = m; nearestEnemyMobDist = d; }
+      if (d < nearestDist) { nearestEnemy = m; nearestDist = d; }
     }
 
-    // ---- STATE TRANSITIONS ----
-    // RETREAT: HP < 30% или плотный бой и HP < 50%
-    if (hpPct < 0.3) bot.state = 'RETREAT';
-    else if (bot.state === 'RETREAT' && hpPct > 0.6) bot.state = 'FARM';
-
-    // FIGHT: враг в радиусе 250 — всегда враждебное давление когда видим
-    if (bot.state !== 'RETREAT' && nearestEnemy && nearestDist < 250) {
-      bot.state = 'FIGHT';
-    }
-
-    // SHOP: мало HP + есть золото + рядом с магазином
-    if ((hpPct < 0.5 && bot.gold >= 50) || (bot.inventory.length === 1 && bot.gold >= 80)) {
-      const distShop = Math.hypot(bot.x - world.shop.x, bot.y - world.shop.y);
-      if (distShop < 80) bot.state = 'SHOP';
-    }
-
-    // ---- ACTIONS ----
-    if (bot.state === 'RETREAT') {
-      // бежим к своей базе
-      const myBase = world.bases.find(b => b.owner === bot.team);
-      bot.targetX = myBase.x;
-      bot.targetY = myBase.y;
-      bot.targetAngle = Math.atan2(myBase.y - bot.y, myBase.x - bot.x);
-    } else if (bot.state === 'FIGHT') {
-      // целимся во врага
-      bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      // давление на врага: идём к нему, держа дистанцию ~35px (агрессивное наступление)
-      if (nearestDist > 45) {
-        // наступаем — быстро сокращаем дистанцию
-        bot.targetX = nearestEnemy.x;
-        bot.targetY = nearestEnemy.y;
-      } else if (nearestDist < 30) {
-        // слишком близко — отходим назад
-        const ang = Math.atan2(bot.y - nearestEnemy.y, bot.x - nearestEnemy.x);
-        bot.targetX = bot.x + Math.cos(ang) * 90;
-        bot.targetY = bot.y + Math.sin(ang) * 90;
-      } else {
-        // 30-45 — оптимальная дистанция: стоим и стреляем
-        bot.targetX = bot.x;
-        bot.targetY = bot.y;
-      }
-    } else if (bot.state === 'SHOP') {
-      // покупаем лучшее что можем
-      if (bot.aiCooldown <= 0) {
-        for (const [k, w] of Object.entries(WEAPONS)) {
-          if (!bot.inventory.includes(k) && bot.gold >= w.price) {
-            bot.gold -= w.price;
-            bot.inventory.push(k);
-            bot.weaponCooldowns[k] = 0;
-            if (!bot.weaponMerge[k]) bot.weaponMerge[k] = 1;
-            bot.aiCooldown = 30;
-            break;
-          }
-        }
-        // лечимся (телепорт на базу пока не реализован — просто +HP)
-        bot.hp = Math.min(bot.maxHp, bot.hp + 30);
-        bot.state = 'FARM';
-      }
-      bot.targetX = bot.x;
-      bot.targetY = bot.y;
-    } else {
-      // v0.7.21: FARM — цели ВСЕГДА вражеская база. Боты идут её атаковать.
-      // Игнорируем «+250 от текущей позиции» и «enemyBase.y +50» — бот должен
-      // идти НАПРЯМУЮ к вражеской базе по своей полосе (left/right lane).
-      bot.state = 'FARM';
-      const enemyBase = world.bases.find(b => b.owner !== bot.team);
-      const myBase = world.bases.find(b => b.owner === bot.team);
-      const myDist = Math.hypot(bot.x - myBase.x, bot.y - myBase.y);
-      const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-      const laneX = world.lanes[lane].x;
-      if (myDist < 200) {
-        // только что возродился/у базы — дать направление и сразу тянуть к вражеской базе
-        bot.targetX = laneX + (Math.random()-0.5) * 30;
-        bot.targetY = enemyBase.y;  // прямо на базу
-        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
-      } else if (nearestEnemy && nearestDist < 400) {
-        // агрессивное давление: идём прямо на врага
-        bot.targetX = nearestEnemy.x;
-        bot.targetY = nearestEnemy.y;
-        bot.targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
-      } else if (nearestEnemyMob && nearestEnemyMobDist < 200) {
-        bot.targetX = nearestEnemyMob.x;
-        bot.targetY = nearestEnemyMob.y;
-        bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
-      } else {
-        // идём в своём коридоре (left/right) прямо к вражеской базе
-        bot.targetX = laneX + (Math.random()-0.5) * 30;
-        bot.targetY = enemyBase.y;  // прямо на вражескую базу
-        bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
-      }
-    }
-
-    // ---- SAFETY: если бот застрял у своей базы больше 2 сек — отправить вперёд ----
-    if (bot.state === 'FARM') {
-      const distFromSpawn = Math.hypot(bot.x - bot.spawnX, bot.y - bot.spawnY);
-      if (distFromSpawn < 10) {
-        bot.stuckTicks = (bot.stuckTicks || 0) + 1;
-        if (bot.stuckTicks > 30) {  // ~1.5 секунды застряли (50ms ticks)
-          // force push away from own base
-          const myBase = world.bases.find(b => b.owner === bot.team);
-          const ang = Math.atan2(bot.y - myBase.y, bot.x - myBase.x);  // away from base
-          const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-          bot.targetX = world.lanes[lane].x + Math.cos(ang) * 200;
-          bot.targetY = bot.y + Math.sin(ang) * 200;
-          bot.targetAngle = ang;
-          bot.stuckTicks = 0;
-        }
-      } else {
-        bot.stuckTicks = 0;
-      }
-    } else {
-      bot.stuckTicks = 0;
-    }
-
-    // ---- MOVEMENT (с учётом стены по центру) ----
-    const dx = bot.targetX - bot.x;
-    const dy = bot.targetY - bot.y;
+    // 2) цель = ближайший враг ИЛИ вражеская база
+    const goal = nearestEnemy || world.bases.find(b => b.owner !== bot.team);
+    if (!goal) continue;
+    const dx = goal.x - bot.x;
+    const dy = goal.y - bot.y;
     const dd = Math.hypot(dx, dy);
+    bot.targetAngle = Math.atan2(dy, dx);
+
+    // 3) движение: по прямой к цели с обходом центральной стены
     if (dd > 4) {
       let nx = bot.x + (dx/dd) * bot.speed;
       let ny = bot.y + (dy/dd) * bot.speed;
-      // отталкиваем от центральной стены
       [nx, ny] = blockCentralWall(nx, ny, 12);
       bot.x = Math.max(10, Math.min(MAP_W-10, nx));
       bot.y = Math.max(10, Math.min(MAP_H-10, ny));
     }
 
-    // ---- SHOOTING (тот же pickTargets, что и у игрока) ----
+    // 4) стрельба: если есть враг в радиусе оружия — стреляем
     for (const wKey of bot.inventory) {
       const wpn = WEAPONS[wKey];
       if (!wpn) continue;
       if ((bot.weaponCooldowns[wKey] || 0) > 0) continue;
       const mergeCount = (bot.weaponMerge && bot.weaponMerge[wKey]) || 1;
-      // прогрессивный множитель целей: 1к=1цель×1.0, 2к=2цели×0.75, 3к=3цели×0.75^2, ...
       const targets = mergeCount;
       const dmgMul = Math.pow(0.75, mergeCount - 1);
       bot.weaponCooldowns[wKey] = wpn.cooldown;
@@ -749,7 +632,6 @@ function tick() {
       const baseDmg = pelletDmg * dmgMul;
       for (const tgt of targetsList) {
         for (let p2 = 0; p2 < pellets; p2++) {
-          // бот: авто-прицел в цель
           let ang;
           if (wpn.pellets) {
             const spread = (p2 - (wpn.pellets-1)/2) * 0.18;
