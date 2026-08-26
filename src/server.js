@@ -716,6 +716,26 @@ function tick() {
       bot.stuckTicks = 0;
     }
 
+    // v0.7.21b: КРАЙНИЙ КИК — если бот FARM/FIGHT и не двигался 3 секунды (distMove < 15 за 60 тиков),
+    // принудительно телепорт на ВРАЖЕСКУЮ БАЗУ. Лечит случаи когда бот залип на месте.
+    if ((bot.state === 'FARM' || bot.state === 'FIGHT') && !bot._lastX) {
+      bot._lastX = bot.x; bot._lastY = bot.y; bot._stuckTicks = 0;
+    } else if (bot.state === 'FARM' || bot.state === 'FIGHT') {
+      const moved = Math.hypot(bot.x - bot._lastX, bot.y - bot._lastY);
+      if (moved < 8) {
+        bot._stuckTicks = (bot._stuckTicks || 0) + 1;
+        if (bot._stuckTicks > 60) {  // 3 сек застряли
+          const enemyBase = world.bases.find(b => b.owner !== bot.team);
+          const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+          bot.x = world.lanes[lane].x + (Math.random()-0.5) * 30;
+          bot.y = enemyBase.y + (bot.team === 'red' ? 80 : -80);  // 80px от вражеской базы
+          bot._lastX = bot.x; bot._lastY = bot.y; bot._stuckTicks = 0;
+        }
+      } else {
+        bot._lastX = bot.x; bot._lastY = bot.y; bot._stuckTicks = 0;
+      }
+    }
+
     // ---- MOVEMENT (с учётом стены по центру) ----
     const dx = bot.targetX - bot.x;
     const dy = bot.targetY - bot.y;
