@@ -607,10 +607,34 @@ function tick() {
     const dd = Math.hypot(dx, dy);
     bot.targetAngle = Math.atan2(dy, dx);
 
-    // 3) движение: по прямой к цели с обходом центральной стены
-    if (dd > 4) {
-      let nx = bot.x + (dx/dd) * bot.speed;
-      let ny = bot.y + (dy/dd) * bot.speed;
+    // 3) движение: v0.7.37 — если есть враг в радиусе оружия, держим дистанцию (атака с range)
+    // иначе идём к цели вплотную (например, идём к базе противника)
+    let targetX = goal.x, targetY = goal.y;
+    if (nearestEnemy) {
+      // максимальный радиус оружия бота (с запасом 20, чтобы попадать)
+      let maxRange = 30;
+      for (const wKey of bot.inventory) {
+        const wpn = WEAPONS[wKey];
+        if (wpn && wpn.range > maxRange) maxRange = wpn.range;
+      }
+      // идём к ближайшему врагу, но останавливаемся на дистанции maxRange - 20
+      const stopDist = Math.max(20, maxRange - 20);
+      if (dd > stopDist) {
+        targetX = bot.x + (dx/dd) * (dd - stopDist);
+        targetY = bot.y + (dy/dd) * (dd - stopDist);
+      } else {
+        // уже близко — стой и стреляй
+        targetX = bot.x;
+        targetY = bot.y;
+      }
+    }
+
+    const mdx = targetX - bot.x;
+    const mdy = targetY - bot.y;
+    const mdd = Math.hypot(mdx, mdy);
+    if (mdd > 2) {
+      let nx = bot.x + (mdx/mdd) * bot.speed;
+      let ny = bot.y + (mdy/mdd) * bot.speed;
       [nx, ny] = blockCentralWall(nx, ny, 12);
       bot.x = Math.max(10, Math.min(MAP_W-10, nx));
       bot.y = Math.max(10, Math.min(MAP_H-10, ny));
@@ -726,6 +750,7 @@ function tick() {
 function pickTargets(player, range, count) {
   const mobsInRange = [];
   const heroesInRange = [];
+  const botsInRange = [];
   for (const m of allMobs()) {
     if (m.team === player.team) continue;
     const d = Math.hypot(m.x - player.x, m.y - player.y);
@@ -736,14 +761,29 @@ function pickTargets(player, range, count) {
     const d = Math.hypot(p.x - player.x, p.y - player.y);
     if (d <= range) heroesInRange.push(p);
   }
+  // v0.7.37: вражеские боты тоже цели
+  for (const b of world.bots) {
+    if (b.team === player.team || b.hp <= 0) continue;
+    const d = Math.hypot(b.x - player.x, b.y - player.y);
+    if (d <= range) botsInRange.push(b);
+  }
 
   // если никого рядом — выходим
-  if (mobsInRange.length === 0 && heroesInRange.length === 0) return [];
+  if (mobsInRange.length === 0 && heroesInRange.length === 0 && botsInRange.length === 0) return [];
 
-  // решаем, кого фокусим: 75% крип / 25% герой
-  const focusMobs = heroesInRange.length === 0 || Math.random() < 0.75;
-  const primary = focusMobs ? mobsInRange : heroesInRange;
-  const secondary = focusMobs ? heroesInRange : mobsInRange;
+  // решаем, кого фокусим: 60% крип / 20% бот / 20% герой (бот = вражеский AI-игрок)
+  const focusMobs = heroesInRange.length === 0 && botsInRange.length === 0 || Math.random() < 0.6;
+  let primary, secondary;
+  if (focusMobs) {
+    primary = mobsInRange;
+    secondary = botsInRange.length ? botsInRange : heroesInRange;
+  } else if (Math.random() < 0.5 && botsInRange.length) {
+    primary = botsInRange;
+    secondary = mobsInRange.length ? mobsInRange : heroesInRange;
+  } else {
+    primary = heroesInRange;
+    secondary = botsInRange.length ? botsInRange : mobsInRange;
+  }
 
   // 75% пуль в primary (фокус), 25% в secondary.
   // Если primary пуст — все пули в secondary случайно.
