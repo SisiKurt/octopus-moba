@@ -39,17 +39,21 @@ for (const [k, w] of Object.entries(WEAPONS)) {
 }
 
 // ---------- Герои ----------
+// v0.7.28: только 2 цвета — синий (blue team) и красный (red team). Цвет = команда, не класс.
 const HERO_DEFS = {
-  agile: { name: 'Ловкач', color: '#22dd66', shape: 'square',
+  agile: { name: 'Ловкач', color: '#4488ff', shape: 'square',
     baseStats: { hp: 110, hpReg: 1.5, speed: 3.2, armor: 1 },
     passivePerLevel: { hp: 6, dmg: 1.5, speed: 0.15 } },
   tank: { name: 'Танк', color: '#4488ff', shape: 'square',
     baseStats: { hp: 200, hpReg: 1.0, speed: 2.4, armor: 5 },
     passivePerLevel: { hp: 18, armor: 1.2 } },
-  miner: { name: 'Минёр', color: '#cc44ff', shape: 'square',
+  miner: { name: 'Минёр', color: '#4488ff', shape: 'square',
     baseStats: { hp: 95, hpReg: 1.2, speed: 2.8, armor: 1 },
     passivePerLevel: { hp: 5, dmg: 2.0 } },
 };
+
+// Переопределение цвета по команде — все синие одинаковые, все красные одинаковые.
+const TEAM_COLORS = { blue: '#4488ff', red: '#ee3344' };
 
 // ---------- Мир ----------
 function createWorld() {
@@ -116,7 +120,7 @@ function newPlayer(socketId, heroKey) {
     id, socketId,
     hero: heroKey,
     name: def.name,
-    color: def.color,
+    color: TEAM_COLORS['blue'],   // v0.7.28: цвет = команда
     shape: def.shape,
     team: 'blue',                 // MVP: все в blue, потом разделим
     // старт у синей базы (снизу по центру)
@@ -150,7 +154,7 @@ function newBot(heroKey, team) {
     isBot: true,
     hero: heroKey,
     name: def.name + '-bot',
-    color: def.color,
+    color: TEAM_COLORS[team] || def.color,   // v0.7.28: цвет = команда
     shape: def.shape,
     team,
     x: pickLaneX(),
@@ -227,8 +231,8 @@ function spawnMob(laneName, team, kills = 0, variant = null) {
   const tankBase  = { hp: 60, armor: 2, dmg: 6,  range: 18, speed: 0.7, size: 10 };
   const rangeBase = { hp: 24, armor: 0, dmg: 4,  range: 80, speed: 0.9, size: 8  };
   const base = (variant === 1) ? rangeBase : tankBase;
-  // цвет по команде, тип рисуется обводкой (range - жёлтая)
-  const color = team === 'blue' ? '#3399ff' : '#ff5544';
+  // v0.7.28: цвет по команде, как у героев (TEAM_COLORS)
+  const color = team === 'blue' ? TEAM_COLORS['blue'] : TEAM_COLORS['red'];
   return {
     id: world.nextId++,
     team,
