@@ -179,8 +179,10 @@ function newBot(heroKey, team) {
 }
 
 function spawnInitialBots() {
-  // v0.7.34: только союзник игрока (blue miner). Красных ботов нет — только красные крипы.
+  // v0.7.35: синий союзник + 2 красных бота. Логика team-aware (FARM/FIGHT/RETREAT) — каждый бот идёт к ВРАЖЕСКОЙ базе и стреляет по врагам.
   world.bots.push(newBot('miner', 'blue'));
+  world.bots.push(newBot('tank',  'red'));
+  world.bots.push(newBot('agile', 'red'));
 }
 
 function recomputeStats(p) {
