@@ -663,18 +663,19 @@ function tick() {
       bot.targetX = bot.x;
       bot.targetY = bot.y;
     } else {
-      // FARM: цель №1 — вражеская база. Если в радиусе 400 есть враг (игрок/бот) — идём к нему (давление).
+      // v0.7.21: FARM — цели ВСЕГДА вражеская база. Боты идут её атаковать.
+      // Игнорируем «+250 от текущей позиции» и «enemyBase.y +50» — бот должен
+      // идти НАПРЯМУЮ к вражеской базе по своей полосе (left/right lane).
       bot.state = 'FARM';
       const enemyBase = world.bases.find(b => b.owner !== bot.team);
-      // если бот в радиусе 200 от своей базы (только что возродился) — явная цель: вражеская база
       const myBase = world.bases.find(b => b.owner === bot.team);
       const myDist = Math.hypot(bot.x - myBase.x, bot.y - myBase.y);
+      const lane = (bot.id % 2 === 0) ? 'left' : 'right';
+      const laneX = world.lanes[lane].x;
       if (myDist < 200) {
-        // агрессивное давление от собственной базы — идём ВНИЗ (для red) или ВВЕРХ (для blue)
-        const forwardSign = bot.team === 'red' ? 1 : -1;
-        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-        bot.targetX = world.lanes[lane].x + (Math.random()-0.5) * 30;
-        bot.targetY = bot.y + forwardSign * 250;  // 250px вперёд от текущей позиции
+        // только что возродился/у базы — дать направление и сразу тянуть к вражеской базе
+        bot.targetX = laneX + (Math.random()-0.5) * 30;
+        bot.targetY = enemyBase.y;  // прямо на базу
         bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
       } else if (nearestEnemy && nearestDist < 400) {
         // агрессивное давление: идём прямо на врага
@@ -686,12 +687,9 @@ function tick() {
         bot.targetY = nearestEnemyMob.y;
         bot.targetAngle = Math.atan2(nearestEnemyMob.y - bot.y, nearestEnemyMob.x - bot.x);
       } else {
-        // идём в своём коридоре (left/right), чтобы не упираться в центральную стену.
-        // 50% ботов идут в левом коридоре, 50% в правом — на основе id чётности.
-        const lane = (bot.id % 2 === 0) ? 'left' : 'right';
-        const laneX = world.lanes[lane].x;
+        // идём в своём коридоре (left/right) прямо к вражеской базе
         bot.targetX = laneX + (Math.random()-0.5) * 30;
-        bot.targetY = enemyBase.y + (bot.team === 'blue' ? -50 : 50);
+        bot.targetY = enemyBase.y;  // прямо на вражескую базу
         bot.targetAngle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
       }
     }
