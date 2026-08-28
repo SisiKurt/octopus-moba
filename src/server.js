@@ -170,6 +170,8 @@ function newBot(heroKey, team) {
     weaponMerge: { pistol: 1 },
     level: 1, xp: 0, xpNext: 30, skillLevels: [0,0,0,0,0,0],
     cooldown: 0, targetAngle: -Math.PI/2,  // смотрит вверх (к врагу)
+    // v0.7.38: персональные скилы бота (выбираются случайно при level-up)
+    botSkills: { armor: 0, atkSpd: 0, crit: 0 },
     // AI-специфика
     state: 'FARM',          // FARM / FIGHT / RETREAT / SHOP
     stateTimer: 0,
@@ -201,6 +203,10 @@ function recomputeStats(p) {
   hp    += 10 * lv;
   armor += 0.3 * lv;
   speed += 0.05 * lv;
+  // v0.7.38: ботские скилы (только для ботов)
+  if (p.botSkills) {
+    armor += 0.5 * p.botSkills.armor;   // +0.5 armor за уровень
+  }
   p.maxHp = hp;
   p.armor = armor;
   p.dmgBonus = dmg;
@@ -347,12 +353,14 @@ function tick() {
         goal.hp -= dmgDealt;
         // facing морского конька — на цель при атаке
         if (m.variant === 1) m.facing = Math.atan2(dy, dx);
-        // респаун только героев (у базы нет .hero)
-        if (goal.hero && goal.hp <= 0) {
-          const def = HERO_DEFS[goal.hero];
-          goal.hp = def.baseStats.hp;
+        // респаун героев и ботов у своей базы (у базы нет .hero/.isBot)
+        if (goal.hp <= 0 && (goal.hero || goal.isBot)) {
+          const def = goal.hero ? HERO_DEFS[goal.hero] : null;
+          const maxHp = def ? def.baseStats.hp : goal.maxHp;
+          goal.hp = maxHp;
+          // респаун у своей базы: red → y=100 (верх), blue → y=MAP_H-130 (низ)
           goal.x = pickLaneX();
-          goal.y = MAP_H - 130;
+          goal.y = goal.team === 'red' ? 100 : MAP_H - 130;
         }
       }
       if (m.cooldown > 0) m.cooldown--;
@@ -376,7 +384,12 @@ function tick() {
             if (dd < 200) {
               b.gold += goldReward;
               b.xp  += xpReward;
-              if (b.xp >= b.xpNext) { b.xp -= b.xpNext; b.level++; b.xpNext = Math.floor(b.xpNext * 1.4); recomputeStats(b); }
+              if (b.xp >= b.xpNext) { b.xp -= b.xpNext; b.level++; b.xpNext = Math.floor(b.xpNext * 1.4); recomputeStats(b);
+            // v0.7.38: бот получает случайный скилл при каждом level-up
+            const skillKeys = ['armor', 'atkSpd', 'crit'];
+            const sk = skillKeys[Math.floor(Math.random() * skillKeys.length)];
+            b.botSkills[sk]++;
+          }
             }
           }
         }
@@ -443,13 +456,14 @@ function tick() {
         m.cooldown = 30;
         const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
         goal.hp -= dmgDealt;
-        // респаун только для героев (у базы нет .hero)
-        if (goal.hero && goal.hp <= 0) {
-          const def = HERO_DEFS[goal.hero];
-          goal.hp = def.baseStats.hp;
-          // респаун у синей базы (снизу)
+        // респаун героев и ботов у своей базы
+        if (goal.hp <= 0 && (goal.hero || goal.isBot)) {
+          const def = goal.hero ? HERO_DEFS[goal.hero] : null;
+          const maxHp = def ? def.baseStats.hp : goal.maxHp;
+          goal.hp = maxHp;
+          // респаун у своей базы
           goal.x = pickLaneX();
-          goal.y = MAP_H - 130;
+          goal.y = goal.team === 'red' ? 100 : MAP_H - 130;
         }
       }
       if (m.cooldown > 0) m.cooldown--;
@@ -474,7 +488,12 @@ function tick() {
             if (dd < 200) {
               b.gold += goldReward;
               b.xp  += xpReward;
-              if (b.xp >= b.xpNext) { b.xp -= b.xpNext; b.level++; b.xpNext = Math.floor(b.xpNext * 1.4); recomputeStats(b); }
+              if (b.xp >= b.xpNext) { b.xp -= b.xpNext; b.level++; b.xpNext = Math.floor(b.xpNext * 1.4); recomputeStats(b);
+            // v0.7.38: бот получает случайный скилл при каждом level-up
+            const skillKeys = ['armor', 'atkSpd', 'crit'];
+            const sk = skillKeys[Math.floor(Math.random() * skillKeys.length)];
+            b.botSkills[sk]++;
+          }
             }
           }
         }
@@ -581,6 +600,27 @@ function tick() {
       if (bot.weaponCooldowns[wKey] > 0) bot.weaponCooldowns[wKey]--;
     }
 
+    // 0) v0.7.38: бот покупает лучшее доступное оружие (если есть gold)
+    // приоритет покупки: pistol → shotgun → smg → rifle → molotov → cannon
+    const WEAPON_ORDER = ['pistol', 'shotgun', 'smg', 'rifle', 'molotov', 'cannon'];
+    for (const k of WEAPON_ORDER) {
+      const wpn = WEAPONS[k];
+      if (!wpn) continue;
+      if (bot.gold < wpn.price) continue;
+      if (!bot.inventory.includes(k)) {
+        // покупаем новое оружие
+        bot.gold -= wpn.price;
+        bot.inventory.push(k);
+        bot.weaponCooldowns[k] = 0;
+        if (!bot.weaponMerge[k]) bot.weaponMerge[k] = 1;
+      } else {
+        // уже есть — merge: тратим цену второго экземпляра, увеличиваем mergeCount
+        bot.gold -= wpn.price;
+        bot.weaponMerge[k] = (bot.weaponMerge[k] || 1) + 1;
+      }
+      break;  // один предмет за тик
+    }
+
     // 1) ближайший враг: игрок / бот / крип противника в радиусе 250
     let nearestEnemy = null, nearestDist = 250;
     for (const p of world.players.values()) {
@@ -641,6 +681,10 @@ function tick() {
     }
 
     // 4) стрельба: если есть враг в радиусе оружия — стреляем
+    // v0.7.38: скилы бота — atkSpd (×0.9 cooldown per level), crit (×2 dmg шанс 10% per level)
+    const atkSpdLvl = (bot.botSkills && bot.botSkills.atkSpd) || 0;
+    const critLvl = (bot.botSkills && bot.botSkills.crit) || 0;
+    const critChance = Math.min(0.5, 0.1 * critLvl);
     for (const wKey of bot.inventory) {
       const wpn = WEAPONS[wKey];
       if (!wpn) continue;
@@ -648,12 +692,15 @@ function tick() {
       const mergeCount = (bot.weaponMerge && bot.weaponMerge[wKey]) || 1;
       const targets = mergeCount;
       const dmgMul = Math.pow(0.75, mergeCount - 1);
-      bot.weaponCooldowns[wKey] = wpn.cooldown;
+      bot.weaponCooldowns[wKey] = Math.max(1, Math.floor(wpn.cooldown * Math.pow(0.9, atkSpdLvl)));
       const targetsList = pickTargets(bot, wpn.range, targets);
       if (targetsList.length === 0) continue;
       const pellets = wpn.pellets || 1;
       const pelletDmg = (wpn.dmg ?? (wpn.dmgPerPellet || 0)) + bot.dmgBonus;
-      const baseDmg = pelletDmg * dmgMul;
+      let baseDmg = pelletDmg * dmgMul;
+      // v0.7.38: crit — ×2 dmg при попадании
+      const isCrit = Math.random() < critChance;
+      if (isCrit) baseDmg *= 2;
       for (const tgt of targetsList) {
         for (let p2 = 0; p2 < pellets; p2++) {
           let ang;
