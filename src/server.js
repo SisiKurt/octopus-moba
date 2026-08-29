@@ -348,6 +348,15 @@ function tick() {
       }
       // атака
       if (d <= m.range && m.cooldown <= 0) {
+        // v0.7.39: range крипы (variant=1) НЕ стреляют через центральную стену
+        if (m.variant === 1) {
+          const blockedM = blockCentralWall(m.x, m.y, 8);
+          const blockedTgt = blockCentralWall(goal.x, goal.y, 8);
+          if (Math.abs(blockedM[0] - blockedTgt[0]) > 100) {
+            if (m.cooldown > 0) m.cooldown--;
+            continue;
+          }
+        }
         m.cooldown = 30;
         const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
         goal.hp -= dmgDealt;
@@ -453,6 +462,15 @@ function tick() {
       }
       // атака
       if (d <= m.range && m.cooldown <= 0) {
+        // v0.7.39: range крипы (variant=1) НЕ стреляют через центральную стену
+        if (m.variant === 1) {
+          const blockedM = blockCentralWall(m.x, m.y, 8);
+          const blockedTgt = blockCentralWall(goal.x, goal.y, 8);
+          if (Math.abs(blockedM[0] - blockedTgt[0]) > 100) {
+            if (m.cooldown > 0) m.cooldown--;
+            continue;
+          }
+        }
         m.cooldown = 30;
         const dmgDealt = Math.max(1, m.dmg - (goal.armor || 0));
         goal.hp -= dmgDealt;
